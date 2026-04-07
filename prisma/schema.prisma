@@ -31,3 +31,14 @@ model Session {
   collaborator  Boolean?  @default(false)
   emailVerified Boolean?  @default(false)
 }
+
+model Shop {
+  id                     String   @id @default(cuid())
+  shop                   String   @unique
+  posthogApiKey          String?
+  posthogApiHost         String?
+  dataCollectionStrategy String   @default("anonymized")
+  serverSideEnabled      Boolean  @default(false)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+}

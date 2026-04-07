@@ -10,5 +10,6 @@ export class Constant {
   static readonly METAFIELD_KEY_DATA_COLLECTION_STRATEGY = "data_collection_strategy"
   static readonly METAFIELD_KEY_WEB_PIXEL_TRACKED_EVENTS = "tracked_events"
   static readonly METAFIELD_KEY_POSTHOG_ECOMMERCE_SPEC = 'web_pixel_posthog_ecommerce_spec'
+  static readonly METAFIELD_KEY_SERVER_SIDE_FEATURE_TOGGLE = "server_side_feature_toggle"
   static readonly SHOPIFY_API_VERSION = '2024-10'
 }
