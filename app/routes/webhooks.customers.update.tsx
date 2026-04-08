@@ -15,6 +15,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return new Response();
   }
 
+  // Only send $identify with PII when data collection strategy allows it
+  if (shopConfig.dataCollectionStrategy === "anonymized") {
+    return new Response();
+  }
+
   const customer = payload as any;
   const distinctId = resolveCustomerDistinctId(customer);
   if (!distinctId) {

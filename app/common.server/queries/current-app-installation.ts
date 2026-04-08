@@ -117,6 +117,5 @@ export const queryCurrentAppInstallation = async (graphql: AdminGraphqlClient) =
     }
   );
   const responseJson = await response.json();
-  console.dir(responseJson.data?.currentAppInstallation, { depth: 4});
   return responseJson.data!.currentAppInstallation;
 };

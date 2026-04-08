@@ -34,12 +34,15 @@ export async function capturePostHogEvents(
   const url = `${config.apiHost.replace(/\/$/, "")}/batch/`;
 
   try {
-    await fetch(url, {
+    const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ api_key: config.apiKey, batch }),
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
+    if (!res.ok) {
+      console.error(`[pixiehog-server] PostHog returned ${res.status}: ${await res.text().catch(() => "")}`);
+    }
   } catch (err) {
     console.error("[pixiehog-server] PostHog capture failed:", err);
   }

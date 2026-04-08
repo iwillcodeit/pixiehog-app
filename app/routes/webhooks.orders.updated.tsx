@@ -19,10 +19,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
 
   const config = { apiKey: shopConfig.posthogApiKey, apiHost: shopConfig.posthogApiHost };
-  const { $set, $set_once } = buildIdentifyProperties(order);
+  const isAnonymous = shopConfig.dataCollectionStrategy !== "non-anonymized";
 
-  // No dedup UUID for updates -- every status change should be recorded
-  await Promise.allSettled([
+  const promises: Promise<void>[] = [
     capturePostHogEvents(config, [
       {
         event: "Order Updated",
@@ -41,8 +40,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         timestamp: order.updated_at,
       },
     ]),
-    identifyPostHog(config, distinctId, $set, $set_once),
-  ]);
+  ];
+
+  if (!isAnonymous) {
+    const { $set, $set_once } = buildIdentifyProperties(order);
+    promises.push(identifyPostHog(config, distinctId, $set, $set_once));
+  }
+
+  await Promise.allSettled(promises);
 
   return new Response();
 };

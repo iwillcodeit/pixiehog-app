@@ -183,6 +183,8 @@ export const clientAction = async ({
       data_collection_strategy: dtoResultDataCollectionStrategy.data.data_collection_strategy,
       server_side_enabled: payload.server_side_enabled ?? false,
     }),
+  }).then((res) => {
+    if (res && !res.ok) console.error("[sync-shop-config] Server returned", res.status);
   }).catch((err) => console.error("[sync-shop-config] Failed to sync config to local DB:", err));
 
   const responseRecalculate = await clientRecalculateWebPixel();

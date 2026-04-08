@@ -14,24 +14,16 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   const refund = payload as any;
 
-  // Shopify refunds/create payload does NOT include a top-level email or customer.
-  // We look for it in refund_line_items[].line_item data or fall back to order lookup.
-  // Since we can't query the Admin API from a webhook handler without an offline token,
-  // we attempt to find the customer email from the refund's nested line_item data.
-  // If unavailable, we use shopify_order_{order_id} as a fallback distinct_id.
-  const distinctId = (() => {
-    // Some webhook payloads include order-level customer data
-    const email = refund.customer?.email || refund.order?.email;
-    if (email) return email.toLowerCase().trim();
-    // Fallback: use order_id as a pseudo-identifier
-    if (refund.order_id) return `shopify_order_${refund.order_id}`;
-    return null;
-  })();
-
-  if (!distinctId) {
+  // Shopify refunds/create payload does NOT include customer data directly.
+  // We attempt to extract email from nested structures if present.
+  // If no email is available, we skip the event entirely to avoid creating
+  // orphaned PostHog profiles that can't merge with the customer's main profile.
+  const email = refund.customer?.email || refund.order?.email || refund.email;
+  if (!email) {
     return new Response();
   }
 
+  const distinctId = email.toLowerCase().trim();
   const config = { apiKey: shopConfig.posthogApiKey, apiHost: shopConfig.posthogApiHost };
   const eventProps = mapRefundCreated(refund, shop);
 

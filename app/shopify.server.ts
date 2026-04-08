@@ -93,6 +93,17 @@ const shopify = shopifyApp({
               },
             ]),
 
+            ...(currentAppInstallation.server_side_feature_toggle
+              ? []
+              : [
+                  {
+                    key: Constant.METAFIELD_KEY_SERVER_SIDE_FEATURE_TOGGLE,
+                    namespace: Constant.METAFIELD_NAMESPACE,
+                    ownerId: currentAppInstallation.id,
+                    type: 'boolean',
+                    value: 'false',
+                  },
+                ]),
             ...(currentAppInstallation.web_pixel_posthog_ecommerce_spec
               ? []
               : [
