@@ -61,8 +61,9 @@ export function mapOrderCompleted(order: ShopifyOrderPayload, shopDomain: string
       ? order.discount_codes.map((d) => d.code).join(",")
       : null;
 
-  const products = (order.line_items || []).map((item, index) => ({
+  const products = (order.line_items || []).map((item: ShopifyLineItem, index: number) => ({
     product_id: item.product_id ? String(item.product_id) : null,
+    variant_id: item.variant_id ? String(item.variant_id) : null,
     sku: item.sku || null,
     category: null,
     name: item.title || null,
@@ -72,7 +73,7 @@ export function mapOrderCompleted(order: ShopifyOrderPayload, shopDomain: string
     quantity: item.quantity || null,
     coupon:
       item.discount_allocations && item.discount_allocations.length > 0
-        ? order.discount_codes?.map((d) => d.code).join(",") || null
+        ? order.discount_codes?.map((d: { code?: string }) => d.code).join(",") || null
         : null,
     position: index + 1,
     url: null,
@@ -94,6 +95,16 @@ export function mapOrderCompleted(order: ShopifyOrderPayload, shopDomain: string
     coupon,
     currency: order.currency || null,
     source_name: order.source_name || null,
+    // Analytics-enriched properties
+    financial_status: order.financial_status || null,
+    fulfillment_status: order.fulfillment_status || null,
+    payment_gateway_names: order.payment_gateway_names || null,
+    tags: order.tags || null,
+    referring_site: order.referring_site || null,
+    landing_site: order.landing_site || null,
+    customer_orders_count: order.customer?.orders_count ?? null,
+    presentment_currency: order.presentment_currency || null,
+    event_source: "server",
     products,
   };
 }

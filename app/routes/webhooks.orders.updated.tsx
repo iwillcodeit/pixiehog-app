@@ -1,8 +1,11 @@
 import type { ActionFunctionArgs } from "@remix-run/node";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
+import { v5 as uuidv5 } from "uuid";
 import { capturePostHogEvents, identifyPostHog } from "../common.server/posthog/posthog-capture";
 import { resolveDistinctId, buildIdentifyProperties } from "../common.server/posthog/identity";
+
+const PIXIEHOG_NAMESPACE = "a1b2c3d4-e5f6-7890-abcd-ef1234567890";
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { shop, payload } = await authenticate.webhook(request);
@@ -21,6 +24,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const config = { apiKey: shopConfig.posthogApiKey, apiHost: shopConfig.posthogApiHost };
   const isAnonymous = shopConfig.dataCollectionStrategy !== "non-anonymized";
 
+  // Dedup UUID includes updated_at so each status change gets through
+  // but Shopify webhook retries (same updated_at) are deduplicated
+  const dedupUUID = order.updated_at
+    ? uuidv5(`${shop}:${order.id}:${order.updated_at}:Order Updated`, PIXIEHOG_NAMESPACE)
+    : undefined;
+
   const promises: Promise<void>[] = [
     capturePostHogEvents(config, [
       {
@@ -38,6 +47,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           affiliation: shop,
         },
         timestamp: order.updated_at,
+        uuid: dedupUUID,
       },
     ]),
   ];
