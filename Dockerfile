@@ -22,6 +22,7 @@ RUN pnpm prisma generate
 RUN pnpm run build
 
 # Remove dev dependencies after build
+ENV CI=true
 RUN pnpm prune --prod
 
 CMD ["pnpm", "run", "docker-start"]
