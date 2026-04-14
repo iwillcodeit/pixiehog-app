@@ -124,6 +124,13 @@ export const clientAction = async ({
       ownerId: appId,
       type: 'single_line_text_field',
       value: dtoResultDataCollectionStrategy.data.data_collection_strategy.toString(),
+    },
+    {
+      key: Constant.METAFIELD_KEY_SERVER_SIDE_FEATURE_TOGGLE,
+      namespace: Constant.METAFIELD_NAMESPACE,
+      ownerId: appId,
+      type: 'boolean',
+      value: String(payload.server_side_enabled ?? false),
     }
   ]
 
@@ -165,7 +172,20 @@ export const clientAction = async ({
     })
   }
   await clientMetafieldsSet(metafieldsSetData);
-  
+
+  // Sync PostHog config to local database for server-side webhook handlers
+  await fetch("/api/sync-shop-config", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      posthog_api_key: dtoResultPosthogApiKey.data.posthog_api_key,
+      posthog_api_host: dtoResultPosthogApiHost.data.posthog_api_host,
+      data_collection_strategy: dtoResultDataCollectionStrategy.data.data_collection_strategy,
+      server_side_enabled: payload.server_side_enabled ?? false,
+    }),
+  }).then((res) => {
+    if (res && !res.ok) console.error("[sync-shop-config] Server returned", res.status);
+  }).catch((err) => console.error("[sync-shop-config] Failed to sync config to local DB:", err));
 
   const responseRecalculate = await clientRecalculateWebPixel();
   const message = (() => {
@@ -284,6 +304,11 @@ export default function Index() {
   );
   const handleJsWebPosthogFeatureEnabledToggle = useCallback(() => setjsWebPosthogFeatureEnabled((value) => !value), []);
 
+  // Server-side events
+  const serverSideEnabledInitialState = currentAppInstallation.server_side_feature_toggle?.jsonValue == true;
+  const [serverSideEnabled, setServerSideEnabled] = useState(serverSideEnabledInitialState);
+  const handleServerSideEnabledToggle = useCallback(() => setServerSideEnabled((value) => !value), []);
+
 
   const dirty = useMemo(() => {
     if (PosthogApiKeyInitialState != PostHogApiKey) {
@@ -304,6 +329,9 @@ export default function Index() {
     if (posthogApiHost != "custom" && PosthogApiHostInitialState != posthogApiHost) {
       return true
     }
+    if (serverSideEnabledInitialState != serverSideEnabled) {
+      return true
+    }
     return false
   }, [
     PosthogApiKeyInitialState,
@@ -316,7 +344,9 @@ export default function Index() {
     dataCollectionStrategy,
     posthogApiHost,
     PosthogApiHostInitialState,
-    posthogApiHostCustom
+    posthogApiHostCustom,
+    serverSideEnabledInitialState,
+    serverSideEnabled
   ])
 
 
@@ -367,6 +397,7 @@ export default function Index() {
         js_web_posthog_feature_toggle: jsWebPosthogFeatureEnabled,
         web_pixel_feature_toggle: webPixelFeatureEnabled,
         data_collection_strategy: dataCollectionStrategy,
+        server_side_enabled: serverSideEnabled,
 
       },
       {
@@ -553,6 +584,40 @@ export default function Index() {
                         ]}
                       />
                       <Link url='/app/js-web-posthog-settings'>Configure JS Web Posthog Settings</Link>
+                    </BlockStack>
+                  </Card>
+                )}
+                {PosthogApiKeyInitialState !="" && PosthogApiKeyInitialState &&
+                (
+                  <Card>
+                    <BlockStack gap="500">
+                      <Text as='h3' variant='headingMd'>Server-Side Events</Text>
+                      <FeatureStatusManager
+                        featureEnabled={serverSideEnabled}
+                        handleFeatureEnabledToggle={handleServerSideEnabledToggle}
+                        dirty={serverSideEnabledInitialState != serverSideEnabled || !!PostHogApiKey != !!PosthogApiKeyInitialState}
+                        bannerTitle='The following requirements need to be met to finalize the Server-Side Events setup:'
+                        bannerTone='warning'
+                        customActions={[
+                          {
+                            trigger: !PostHogApiKey,
+                            badgeText: "Action required",
+                            badgeTone: "critical",
+                            badgeToneOnDirty: "attention",
+                            bannerMessage: "Setup Posthog project API key."
+                          },
+                          {
+                            trigger: !posthogApiHost,
+                            badgeText: "Action required",
+                            badgeTone: "critical",
+                            badgeToneOnDirty: "attention",
+                            bannerMessage: "Setup Posthog API Host."
+                          },
+                        ]}
+                      />
+                      <Text as='p' variant='bodyMd' tone='subdued'>
+                        Captures orders from all channels (POS, subscriptions, API, draft orders) not reached by the web pixel. Online store orders are automatically deduplicated.
+                      </Text>
                     </BlockStack>
                   </Card>
                 )}

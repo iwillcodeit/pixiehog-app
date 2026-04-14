@@ -1,6 +1,6 @@
 import type { CustomerPrivacyPayload, PixelEvents, StandardEvents } from '@shopify/web-pixels-extension';
 import { register } from '@shopify/web-pixels-extension';
-import { v7 as uuidv7 } from 'uuid';
+import { v5 as uuidv5, v7 as uuidv7 } from 'uuid';
 import type { WebPixelSettings } from '../../../common/dto/web-pixel-settings.dto';
 import { extractEventUUID } from './validate-uuid';
 import { isNumber } from './type-utils';
@@ -363,6 +363,16 @@ register(async (extensionApi) => {
 
   }
 
+  // Deterministic UUID for dedup with server-side webhooks.
+  // Must match the server-side generateOrderEventUUID() in app/common.server/posthog/dedup.ts
+  // CRITICAL: Keep PIXIEHOG_NAMESPACE in sync with app/common.server/posthog/dedup.ts
+  const PIXIEHOG_NAMESPACE = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
+  const shopDomain = init.data.shop?.myshopifyDomain;
+  function generateCheckoutEventUUID(checkoutToken: string, eventName: string): string | undefined {
+    if (!shopDomain) return undefined;
+    return uuidv5(`${shopDomain}:${checkoutToken}:${eventName}`, PIXIEHOG_NAMESPACE);
+  }
+
   const checkoutKeys = [
     'checkout_started',
     'checkout_completed',
@@ -381,6 +391,17 @@ register(async (extensionApi) => {
         const distinctId = await resolveDistinctId();
         const {sessionId,windowId} = await resolveSessionId();
         const eventName = resolveEventEcommerceName(event.name);
+
+        // Use checkout token for deterministic dedup UUID to match server-side.
+        // checkout.token is always available (unlike order.id which may be null).
+        const checkoutToken = event.data.checkout?.token;
+        const canonicalEventName = event.name === 'checkout_completed' ? 'Order Completed'
+          : event.name === 'checkout_started' ? 'Checkout Started'
+          : null;
+        const dedupUUID = (canonicalEventName && checkoutToken
+          ? generateCheckoutEventUUID(checkoutToken, canonicalEventName)
+          : undefined) || uuid;
+
         await posthog.captureStatelessPublic(distinctId, eventName, {
           ...featureFlags,
           ...initProperties,
@@ -413,7 +434,7 @@ register(async (extensionApi) => {
             }),
           ...resolveEventEcommerceSpecBody(event)
         }, {
-          ...(uuid ? { uuid: uuid } : {}),
+          ...(dedupUUID ? { uuid: dedupUUID } : {}),
           timestamp: new Date(event.timestamp),
         });
 

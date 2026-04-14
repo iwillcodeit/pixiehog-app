@@ -93,11 +93,22 @@ const shopify = shopifyApp({
               },
             ]),
 
+            ...(currentAppInstallation.server_side_feature_toggle
+              ? []
+              : [
+                  {
+                    key: Constant.METAFIELD_KEY_SERVER_SIDE_FEATURE_TOGGLE,
+                    namespace: Constant.METAFIELD_NAMESPACE,
+                    ownerId: currentAppInstallation.id,
+                    type: 'boolean',
+                    value: 'false',
+                  },
+                ]),
             ...(currentAppInstallation.web_pixel_posthog_ecommerce_spec
               ? []
               : [
                   {
-                    key: Constant.METAFIELD_KEY_JS_WEB_POSTHOG_CONFIG,
+                    key: Constant.METAFIELD_KEY_POSTHOG_ECOMMERCE_SPEC,
                     namespace: Constant.METAFIELD_NAMESPACE,
                     ownerId: currentAppInstallation.id,
                     type: 'boolean',
@@ -105,6 +116,17 @@ const shopify = shopifyApp({
                   },
                 ]),
       ]);
+
+      // Sync PostHog config to local Shop table for webhook handlers
+      const posthogApiKey = currentAppInstallation.posthog_api_key?.value || null;
+      const posthogApiHost = currentAppInstallation.posthog_api_host?.value || null;
+      const dataCollectionStrategy = currentAppInstallation.data_collection_strategy?.value || 'anonymized';
+      const serverSideEnabled = currentAppInstallation.server_side_feature_toggle?.value === 'true';
+      await prisma.shop.upsert({
+        where: { shop: session.shop },
+        update: { posthogApiKey, posthogApiHost, dataCollectionStrategy, serverSideEnabled },
+        create: { shop: session.shop, posthogApiKey, posthogApiHost, dataCollectionStrategy, serverSideEnabled },
+      });
     },
   },
   future: {

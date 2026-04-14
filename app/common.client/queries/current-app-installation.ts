@@ -15,6 +15,7 @@ export const queryCurrentAppInstallation = async () => {
         $dataCollectionStrategyKey: String!
         $webPixelTrackedEvents: String!
         $webPixelPostHogEcommerceSpecKey: String!
+        $serverSideFeatureToggleKey: String!
       ) {
         currentAppInstallation {
           id
@@ -74,6 +75,12 @@ export const queryCurrentAppInstallation = async () => {
             value
             type
           },
+          server_side_feature_toggle: metafield(namespace: $namespace, key: $serverSideFeatureToggleKey) {
+            key
+            jsonValue
+            value
+            type
+          },
         }
       }
     `,
@@ -89,6 +96,7 @@ export const queryCurrentAppInstallation = async () => {
         dataCollectionStrategyKey: Constant.METAFIELD_KEY_DATA_COLLECTION_STRATEGY,
         webPixelTrackedEvents: Constant.METAFIELD_KEY_WEB_PIXEL_TRACKED_EVENTS,
         webPixelPostHogEcommerceSpecKey: Constant.METAFIELD_KEY_POSTHOG_ECOMMERCE_SPEC,
+        serverSideFeatureToggleKey: Constant.METAFIELD_KEY_SERVER_SIDE_FEATURE_TOGGLE,
       },
     }
   );

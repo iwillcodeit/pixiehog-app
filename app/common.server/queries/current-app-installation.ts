@@ -31,10 +31,11 @@ export const queryCurrentAppInstallation = async (graphql: AdminGraphqlClient) =
         $dataCollectionStrategyKey: String!
         $webPixelTrackedEvents: String!
         $webPixelPostHogEcommerceSpecKey: String!
+        $serverSideFeatureToggleKey: String!
       ) {
         currentAppInstallation {
           id
-          
+
           app {
             id
             title
@@ -90,6 +91,12 @@ export const queryCurrentAppInstallation = async (graphql: AdminGraphqlClient) =
             value
             type
           },
+          server_side_feature_toggle: metafield(namespace: $namespace, key: $serverSideFeatureToggleKey) {
+            key
+            jsonValue
+            value
+            type
+          },
         }
       }
     `,
@@ -105,10 +112,10 @@ export const queryCurrentAppInstallation = async (graphql: AdminGraphqlClient) =
         dataCollectionStrategyKey: Constant.METAFIELD_KEY_DATA_COLLECTION_STRATEGY,
         webPixelTrackedEvents: Constant.METAFIELD_KEY_WEB_PIXEL_TRACKED_EVENTS,
         webPixelPostHogEcommerceSpecKey: Constant.METAFIELD_KEY_POSTHOG_ECOMMERCE_SPEC,
+        serverSideFeatureToggleKey: Constant.METAFIELD_KEY_SERVER_SIDE_FEATURE_TOGGLE,
       },
     }
   );
   const responseJson = await response.json();
-  console.dir(responseJson.data?.currentAppInstallation, { depth: 4});
   return responseJson.data!.currentAppInstallation;
 };
