@@ -12,7 +12,7 @@ ENV NODE_ENV=production
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY extensions/web-pixel/package.json ./extensions/web-pixel/
 
-RUN pnpm install --frozen-lockfile --prod
+RUN pnpm install --frozen-lockfile
 
 COPY . .
 
@@ -20,5 +20,8 @@ COPY . .
 RUN pnpm prisma generate
 
 RUN pnpm run build
+
+# Remove dev dependencies after build
+RUN pnpm prune --prod
 
 CMD ["pnpm", "run", "docker-start"]
