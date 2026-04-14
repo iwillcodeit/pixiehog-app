@@ -2,7 +2,7 @@
 
 client_id = "7677639bc4d2b1a494536a4dc551905b"
 name = "nuances - Posthog Integration"
-application_url = "https://example.com"
+application_url = "https://pixiehog-app-production.up.railway.app"
 embedded = true
 
 [build]
@@ -17,9 +17,9 @@ scopes = "read_customer_events,read_themes,write_pixels,read_orders,read_custome
 
 [auth]
 redirect_urls = [
-  "https://example.com/auth/callback",
-  "https://example.com/auth/shopify/callback",
-  "https://example.com/api/auth/callback"
+  "https://pixiehog-app-production.up.railway.app/auth/callback",
+  "https://pixiehog-app-production.up.railway.app/auth/shopify/callback",
+  "https://pixiehog-app-production.up.railway.app/api/auth/callback"
 ]
 
 [webhooks]
