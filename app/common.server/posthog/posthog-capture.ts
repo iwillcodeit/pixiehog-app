@@ -1,4 +1,4 @@
-const LIB_NAME = "pixiehog-server";
+const LIB_NAME = "nuances-server";
 const LIB_VERSION = "1.0.0";
 const FETCH_TIMEOUT_MS = 5000;
 
@@ -41,10 +41,10 @@ export async function capturePostHogEvents(
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
     if (!res.ok) {
-      console.error(`[pixiehog-server] PostHog returned ${res.status}: ${await res.text().catch(() => "")}`);
+      console.error(`[nuances-server] PostHog returned ${res.status}: ${await res.text().catch(() => "")}`);
     }
   } catch (err) {
-    console.error("[pixiehog-server] PostHog capture failed:", err);
+    console.error("[nuances-server] PostHog capture failed:", err);
   }
 }
 

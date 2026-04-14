@@ -22,9 +22,9 @@ export default function App() {
   return (
     <div className={styles.index}>
       <div className={styles.content}>
-        <h1 className={styles.heading}>Pxhog</h1>
+        <h1 className={styles.heading}>nuances</h1>
         <p className={styles.text}>
-          Connector to send events from Shopify to Posthog
+          PostHog Integration for Shopify
         </p>
         {showForm && (
           <Form className={styles.form} method="post" action="/auth/login">
