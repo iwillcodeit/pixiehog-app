@@ -9,9 +9,10 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 
-COPY package.json pnpm-lock.yaml ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY extensions/web-pixel/package.json ./extensions/web-pixel/
 
-RUN pnpm install --frozen-lockfile --prod && pnpm remove @shopify/cli
+RUN pnpm install --frozen-lockfile --prod
 
 COPY . .
 
