@@ -72,6 +72,14 @@
   "trustedDependencies": [
     "@shopify/plugin-cloudflare"
   ],
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@prisma/client",
+      "@prisma/engines",
+      "prisma",
+      "esbuild"
+    ]
+  },
   "resolutions": {},
   "overrides": {},
   "author": "womg3r"
