@@ -1,4 +1,6 @@
-FROM node:18-alpine
+FROM node:18-slim
+
+RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
 
 EXPOSE 3000
 
@@ -14,6 +16,9 @@ RUN npm ci --omit=dev && npm cache clean --force
 RUN npm remove @shopify/cli
 
 COPY . .
+
+# Generate Prisma client (doesn't need DATABASE_URL, only the schema)
+RUN npx prisma generate
 
 RUN npm run build
 

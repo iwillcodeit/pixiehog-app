@@ -1,0 +1,65 @@
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+client_id = "7677639bc4d2b1a494536a4dc551905b"
+name = "nuances - Posthog Integration"
+application_url = "https://example.com"
+embedded = true
+
+[build]
+include_config_on_deploy = true
+
+[access.admin]
+direct_api_mode = "online"
+embedded_app_direct_api_access = true
+
+[access_scopes]
+scopes = "read_customer_events,read_themes,write_pixels,read_orders,read_customers"
+
+[auth]
+redirect_urls = [
+  "https://example.com/auth/callback",
+  "https://example.com/auth/shopify/callback",
+  "https://example.com/api/auth/callback"
+]
+
+[webhooks]
+api_version = "2024-10"
+
+[[webhooks.subscriptions]]
+topics = [ "app/uninstalled" ]
+uri = "/webhooks/app/uninstalled"
+
+[[webhooks.subscriptions]]
+topics = [ "orders/create" ]
+uri = "/webhooks/orders/create"
+
+[[webhooks.subscriptions]]
+topics = [ "orders/updated" ]
+uri = "/webhooks/orders/updated"
+
+[[webhooks.subscriptions]]
+topics = [ "orders/cancelled" ]
+uri = "/webhooks/orders/cancelled"
+
+[[webhooks.subscriptions]]
+topics = [ "refunds/create" ]
+uri = "/webhooks/refunds/create"
+
+[[webhooks.subscriptions]]
+topics = [ "customers/create", "customers/update" ]
+uri = "/webhooks/customers/update"
+
+[[webhooks.subscriptions]]
+compliance_topics = [ "customers/redact" ]
+uri = "/webhooks/customers/redact"
+
+[[webhooks.subscriptions]]
+compliance_topics = [ "customers/data_request"]
+uri = "/webhooks/customers/data_request"
+
+[[webhooks.subscriptions]]
+compliance_topics = [ "shop/redact" ]
+uri = "/webhooks/shop/redact"
+
+[pos]
+embedded = false
