@@ -26,7 +26,7 @@ export function generateCheckoutEventUUID(
   eventName: string
 ): string {
   if (!shopDomain.endsWith(".myshopify.com")) {
-    console.warn(`[pixiehog-dedup] shopDomain "${shopDomain}" does not look like a myshopify domain — dedup UUIDs may not match the web pixel`);
+    console.warn(`[nuances-dedup] shopDomain "${shopDomain}" does not look like a myshopify domain — dedup UUIDs may not match the web pixel`);
   }
   return uuidv5(`${shopDomain}:${checkoutToken}:${eventName}`, PIXIEHOG_NAMESPACE);
 }

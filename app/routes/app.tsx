@@ -151,7 +151,7 @@ export function ErrorBoundary() {
                  
                     
                       <InlineStack  align='space-between'>
-                        <Button variant='primary' url={'https://github.com/celadonworks/pixiehog-app'} target='_blank'>Submit GitHub Issue</Button>
+                        <Button variant='primary' url={'https://github.com/iwillcodeit/pixiehog-app'} target='_blank'>Submit GitHub Issue</Button>
                       </InlineStack>
                     </BlockStack>
                   </Card>
