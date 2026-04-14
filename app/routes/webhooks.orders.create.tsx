@@ -44,7 +44,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // Only send $identify with PII when data collection strategy allows it
   if (!isAnonymous) {
     const { $set, $set_once } = buildIdentifyProperties(order);
-    promises.push(identifyPostHog(config, distinctId, $set, $set_once));
+    promises.push(identifyPostHog(config, distinctId, $set, $set_once, order.created_at));
   }
 
   await Promise.allSettled(promises);

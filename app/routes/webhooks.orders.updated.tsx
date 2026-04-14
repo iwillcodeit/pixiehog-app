@@ -4,8 +4,7 @@ import db from "../db.server";
 import { v5 as uuidv5 } from "uuid";
 import { capturePostHogEvents, identifyPostHog } from "../common.server/posthog/posthog-capture";
 import { resolveDistinctId, buildIdentifyProperties } from "../common.server/posthog/identity";
-
-const PIXIEHOG_NAMESPACE = "a1b2c3d4-e5f6-7890-abcd-ef1234567890";
+import { PIXIEHOG_NAMESPACE } from "../common.server/posthog/dedup";
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { shop, payload } = await authenticate.webhook(request);
@@ -54,7 +53,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   if (!isAnonymous) {
     const { $set, $set_once } = buildIdentifyProperties(order);
-    promises.push(identifyPostHog(config, distinctId, $set, $set_once));
+    promises.push(identifyPostHog(config, distinctId, $set, $set_once, order.updated_at));
   }
 
   await Promise.allSettled(promises);

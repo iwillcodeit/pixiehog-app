@@ -29,7 +29,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const config = { apiKey: shopConfig.posthogApiKey, apiHost: shopConfig.posthogApiHost };
   const { $set, $set_once } = buildCustomerIdentifyProperties(customer);
 
-  await identifyPostHog(config, distinctId, $set, $set_once);
+  await identifyPostHog(config, distinctId, $set, $set_once, customer.updated_at);
 
   return new Response();
 };

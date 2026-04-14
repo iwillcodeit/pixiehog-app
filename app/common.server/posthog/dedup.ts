@@ -7,7 +7,7 @@ import { v5 as uuidv5 } from "uuid";
  * CRITICAL: This value MUST match PIXIEHOG_NAMESPACE in
  * extensions/web-pixel/src/index.ts
  */
-const PIXIEHOG_NAMESPACE = "a1b2c3d4-e5f6-7890-abcd-ef1234567890";
+export const PIXIEHOG_NAMESPACE = "a1b2c3d4-e5f6-7890-abcd-ef1234567890";
 
 /**
  * Generates a deterministic UUID for a PostHog event based on shop domain,
@@ -25,5 +25,8 @@ export function generateCheckoutEventUUID(
   checkoutToken: string,
   eventName: string
 ): string {
+  if (!shopDomain.endsWith(".myshopify.com")) {
+    console.warn(`[pixiehog-dedup] shopDomain "${shopDomain}" does not look like a myshopify domain — dedup UUIDs may not match the web pixel`);
+  }
   return uuidv5(`${shopDomain}:${checkoutToken}:${eventName}`, PIXIEHOG_NAMESPACE);
 }

@@ -367,8 +367,9 @@ register(async (extensionApi) => {
   // Must match the server-side generateOrderEventUUID() in app/common.server/posthog/dedup.ts
   // CRITICAL: Keep PIXIEHOG_NAMESPACE in sync with app/common.server/posthog/dedup.ts
   const PIXIEHOG_NAMESPACE = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
-  const shopDomain = init.data.shop?.myshopifyDomain || init.data.shop?.name || '';
-  function generateCheckoutEventUUID(checkoutToken: string, eventName: string): string {
+  const shopDomain = init.data.shop?.myshopifyDomain;
+  function generateCheckoutEventUUID(checkoutToken: string, eventName: string): string | undefined {
+    if (!shopDomain) return undefined;
     return uuidv5(`${shopDomain}:${checkoutToken}:${eventName}`, PIXIEHOG_NAMESPACE);
   }
 
@@ -397,9 +398,9 @@ register(async (extensionApi) => {
         const canonicalEventName = event.name === 'checkout_completed' ? 'Order Completed'
           : event.name === 'checkout_started' ? 'Checkout Started'
           : null;
-        const dedupUUID = canonicalEventName && checkoutToken
+        const dedupUUID = (canonicalEventName && checkoutToken
           ? generateCheckoutEventUUID(checkoutToken, canonicalEventName)
-          : uuid;
+          : undefined) || uuid;
 
         await posthog.captureStatelessPublic(distinctId, eventName, {
           ...featureFlags,

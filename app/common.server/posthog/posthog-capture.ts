@@ -52,7 +52,8 @@ export async function identifyPostHog(
   config: PostHogConfig,
   distinctId: string,
   $set: Record<string, unknown>,
-  $set_once?: Record<string, unknown>
+  $set_once?: Record<string, unknown>,
+  timestamp?: string
 ): Promise<void> {
   await capturePostHogEvents(config, [
     {
@@ -62,6 +63,7 @@ export async function identifyPostHog(
         $set,
         ...($set_once ? { $set_once } : {}),
       },
+      timestamp,
     },
   ]);
 }
