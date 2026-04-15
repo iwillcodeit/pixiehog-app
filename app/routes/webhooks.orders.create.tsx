@@ -21,27 +21,34 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
 
   const config = { apiKey: shopConfig.posthogApiKey, apiHost: shopConfig.posthogApiHost };
-  const eventProps = mapOrderCompleted(order, shop);
   const isAnonymous = shopConfig.dataCollectionStrategy !== "non-anonymized";
+  const isWebOrder = order.source_name === "web";
 
-  // Use checkout_token for dedup UUID (matches web pixel's checkout.token)
-  const eventUUID = order.checkout_token
-    ? generateCheckoutEventUUID(shop, order.checkout_token, "Order Completed")
-    : undefined;
+  const promises: Promise<void>[] = [];
 
-  const promises: Promise<void>[] = [
-    capturePostHogEvents(config, [
-      {
-        event: "Order Completed",
-        distinct_id: distinctId,
-        properties: eventProps,
-        timestamp: order.created_at,
-        uuid: eventUUID,
-      },
-    ]),
-  ];
+  // Skip Order Completed for web orders — the web pixel already captures it
+  // with session, UTM, replay, and feature flag data that the server doesn't have.
+  // Only send for non-web channels (subscriptions, POS, draft orders, API, etc.)
+  if (!isWebOrder) {
+    const eventProps = mapOrderCompleted(order, shop);
+    // Deterministic UUID prevents duplicate events from Shopify webhook retries
+    const eventUUID = order.checkout_token
+      ? generateCheckoutEventUUID(shop, order.checkout_token, "Order Completed")
+      : undefined;
+    promises.push(
+      capturePostHogEvents(config, [
+        {
+          event: "Order Completed",
+          distinct_id: distinctId,
+          properties: eventProps,
+          timestamp: order.created_at,
+          uuid: eventUUID,
+        },
+      ]),
+    );
+  }
 
-  // Only send $identify with PII when data collection strategy allows it
+  // Always send $identify — enriches the person profile regardless of channel
   if (!isAnonymous) {
     const { $set, $set_once } = buildIdentifyProperties(order);
     promises.push(identifyPostHog(config, distinctId, $set, $set_once, order.created_at));
