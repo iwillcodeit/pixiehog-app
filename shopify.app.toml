@@ -6,7 +6,6 @@ application_url = "https://pixiehog-app-production.up.railway.app"
 embedded = true
 
 [build]
-include_config_on_deploy = true
 
 [access.admin]
 direct_api_mode = "online"
