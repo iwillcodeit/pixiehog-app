@@ -4,6 +4,7 @@ import db from "../db.server";
 import { capturePostHogEvents, identifyPostHog } from "../common.server/posthog/posthog-capture";
 import { mapOrderCompleted } from "../common.server/posthog/mappers/order-completed";
 import { resolveDistinctId, buildIdentifyProperties } from "../common.server/posthog/identity";
+import { generateCheckoutEventUUID } from "../common.server/posthog/dedup";
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { shop, payload } = await authenticate.webhook(request);
@@ -30,6 +31,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // Only send for non-web channels (subscriptions, POS, draft orders, API, etc.)
   if (!isWebOrder) {
     const eventProps = mapOrderCompleted(order, shop);
+    // Deterministic UUID prevents duplicate events from Shopify webhook retries
+    const eventUUID = order.checkout_token
+      ? generateCheckoutEventUUID(shop, order.checkout_token, "Order Completed")
+      : undefined;
     promises.push(
       capturePostHogEvents(config, [
         {
@@ -37,6 +42,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           distinct_id: distinctId,
           properties: eventProps,
           timestamp: order.created_at,
+          uuid: eventUUID,
         },
       ]),
     );
