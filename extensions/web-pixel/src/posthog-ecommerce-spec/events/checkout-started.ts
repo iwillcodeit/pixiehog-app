@@ -71,6 +71,12 @@ interface Product {
    * @example 'https://cdn.shopify.com/s/files/1/0452/0935/4401/files/DSC07095_1017x1526_crop_center.jpg'
    */
   image_url: string | null;
+
+  /**
+   * Selling plan name if purchased via subscription
+   * @example 'Recharge Lift – delivered every 4 weeks'
+   */
+  selling_plan_name: string | null;
 }
 
 interface CheckoutStartedEvent {
@@ -133,6 +139,11 @@ interface CheckoutStartedEvent {
    * @example [{ product_id: 'gid://shopify/Product/4444', ... }, ...]
    */
   products: Product[];
+
+  /**
+   * Whether any line item is purchased via a selling plan (subscription)
+   */
+  has_subscription: boolean;
 }
 export function checkoutStartedSpec(shop: Shop, event: StandardEvents['checkout_started']): CheckoutStartedEvent {
   //https://posthog.com/docs/data/event-spec/ecommerce-events#checkout-started
@@ -168,7 +179,9 @@ export function checkoutStartedSpec(shop: Shop, event: StandardEvents['checkout_
         position: index + 1,
         url: lineItem.variant?.product.url || null,
         image_url: lineItem.variant?.image?.src || null,
+        selling_plan_name: lineItem.sellingPlanAllocation?.sellingPlan.name ?? null,
       };
     }),
+    has_subscription: checkout.lineItems.some((li) => li.sellingPlanAllocation != null),
   };
 }

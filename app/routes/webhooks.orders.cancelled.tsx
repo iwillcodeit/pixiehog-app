@@ -4,6 +4,7 @@ import db from "../db.server";
 import { capturePostHogEvents } from "../common.server/posthog/posthog-capture";
 import { mapOrderCancelled } from "../common.server/posthog/mappers/order-cancelled";
 import { resolveDistinctId } from "../common.server/posthog/identity";
+import { generateOrderEventUUID } from "../common.server/posthog/dedup";
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { shop, payload } = await authenticate.webhook(request);
@@ -28,6 +29,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       distinct_id: distinctId,
       properties: eventProps,
       timestamp: order.cancelled_at || order.updated_at,
+      uuid: generateOrderEventUUID(shop, order.checkout_token, order.id, "Order Cancelled"),
     },
   ]);
 

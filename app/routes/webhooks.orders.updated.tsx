@@ -29,7 +29,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     ? uuidv5(`${shop}:${order.id}:${order.updated_at}:Order Updated`, PIXIEHOG_NAMESPACE)
     : undefined;
 
-  const promises: Promise<void>[] = [
+  const promises: Promise<unknown>[] = [
     capturePostHogEvents(config, [
       {
         event: "Order Updated",

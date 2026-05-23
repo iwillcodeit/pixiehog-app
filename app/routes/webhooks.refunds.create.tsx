@@ -3,6 +3,7 @@ import { authenticate } from "../shopify.server";
 import db from "../db.server";
 import { capturePostHogEvents } from "../common.server/posthog/posthog-capture";
 import { mapRefundCreated } from "../common.server/posthog/mappers/refund-created";
+import { generateRefundUUID } from "../common.server/posthog/dedup";
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { shop, payload } = await authenticate.webhook(request);
@@ -33,6 +34,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       distinct_id: distinctId,
       properties: eventProps,
       timestamp: refund.created_at,
+      uuid: generateRefundUUID(shop, refund.id),
     },
   ]);
 
