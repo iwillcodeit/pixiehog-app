@@ -60,10 +60,9 @@ export function mapRefundCreated(refund: ShopifyRefundPayload, shopDomain: strin
     subtotal: parseAmount(rli.subtotal_set?.shop_money?.amount ?? rli.subtotal),
   }));
 
-  // Sum up refund amounts from line items
-  const totalRefund = refundLineItems.reduce((sum, item) => {
-    return sum + (item.subtotal || 0);
-  }, 0);
+  // Sum from line items, or fall back to top-level total_refunded (backfill path)
+  const lineItemTotal = refundLineItems.reduce((sum, item) => sum + (item.subtotal || 0), 0);
+  const totalRefund = lineItemTotal || parseAmount((refund as Record<string, unknown>).total_refunded as string);
 
   return {
     order_id: String(refund.order_id),

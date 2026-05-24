@@ -133,29 +133,9 @@ export function buildOrdersBulkQuery(queryFilter: string): string {
                     legacyResourceId
                     createdAt
                     note
-                    refundLineItems(first: 100) {
-                      edges {
-                        node {
-                          quantity
-                          lineItem {
-                            id
-                            title
-                            variantTitle
-                            vendor
-                            sku
-                            product { legacyResourceId }
-                            variant { legacyResourceId sku }
-                          }
-                          subtotalSet {
-                            shopMoney { amount currencyCode }
-                            presentmentMoney { amount currencyCode }
-                          }
-                          totalTaxSet {
-                            shopMoney { amount currencyCode }
-                            presentmentMoney { amount currencyCode }
-                          }
-                        }
-                      }
+                    totalRefundedSet {
+                      shopMoney { amount currencyCode }
+                      presentmentMoney { amount currencyCode }
                     }
                   }
                 }

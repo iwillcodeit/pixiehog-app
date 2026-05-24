@@ -59,6 +59,7 @@ export interface GqlRefundNode {
   legacyResourceId?: string;
   createdAt?: string;
   note?: string | null;
+  totalRefundedSet?: MoneyBag;
 }
 
 export interface GqlOrderNode {
@@ -163,13 +164,10 @@ export function ingestRow(
     return { absorbed: true, isOrder: false };
   }
 
-  // RefundLineItem (parent = Refund)
+  // RefundLineItem — not fetched in bulk query (Shopify disallows connections
+  // inside list fields). Kept as no-op for forward compatibility.
   if (parentId && parentId.startsWith("gid://shopify/Refund/")) {
-    const slot = current.refunds.get(parentId);
-    if (slot) {
-      slot.refundLineItems.push(row as unknown as GqlRefundLineItemNode);
-      return { absorbed: true, isOrder: false };
-    }
+    return { absorbed: true, isOrder: false };
   }
 
   return { absorbed: false, isOrder: false };
@@ -304,21 +302,14 @@ export function toRestRefunds(assembled: AssembledOrder) {
       order_id: orderId,
       created_at: r.createdAt,
       note: r.note ?? null,
-      refund_line_items: slot.refundLineItems.map((rli) => ({
-        line_item_id: legacyId(rli.lineItem?.id) ?? undefined,
-        quantity: rli.quantity ?? 0,
-        subtotal_set: { shop_money: { amount: presentment(rli.subtotalSet) } },
-        total_tax_set: { shop_money: { amount: presentment(rli.totalTaxSet) } },
-        line_item: {
-          id: legacyId(rli.lineItem?.id) ?? undefined,
-          product_id: legacyId(undefined, rli.lineItem?.product?.legacyResourceId) ?? undefined,
-          variant_id: legacyId(undefined, rli.lineItem?.variant?.legacyResourceId) ?? undefined,
-          sku: rli.lineItem?.variant?.sku ?? rli.lineItem?.sku ?? null,
-          title: rli.lineItem?.title ?? "",
-          variant_title: rli.lineItem?.variantTitle ?? null,
-          vendor: rli.lineItem?.vendor ?? null,
-        },
-      })),
+      // Bulk ops can't nest connections inside list fields, so refundLineItems
+      // are unavailable. Use totalRefundedSet for the total and skip products.
+      refund_line_items: [] as Array<{
+        subtotal_set?: { shop_money?: { amount?: string } };
+        line_item?: { product_id?: number; sku?: string; title?: string; variant_title?: string; vendor?: string };
+        quantity?: number;
+      }>,
+      total_refunded: presentment(r.totalRefundedSet),
     });
   }
   return out;
