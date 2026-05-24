@@ -34,7 +34,7 @@ export interface GqlLineItemNode {
   originalUnitPriceSet?: MoneyBag;
   discountedUnitPriceSet?: MoneyBag;
   totalDiscountSet?: MoneyBag;
-  sellingPlanAllocation?: { sellingPlan?: { name?: string } } | null;
+  sellingPlan?: { name?: string; sellingPlanId?: string } | null;
 }
 
 export interface GqlRefundLineItemNode {
@@ -221,8 +221,8 @@ export function toRestOrder(assembled: AssembledOrder) {
     total_discount: presentment(li.totalDiscountSet) ?? "0",
     discount_allocations: [],
     product_exists: true,
-    selling_plan_allocation: li.sellingPlanAllocation
-      ? { selling_plan: { name: li.sellingPlanAllocation.sellingPlan?.name } }
+    selling_plan_allocation: li.sellingPlan
+      ? { selling_plan: { name: li.sellingPlan.name } }
       : null,
   }));
 
