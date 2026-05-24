@@ -57,6 +57,13 @@
 - **Why**: Shopify deprecated the field (still functional, removal date unknown)
 - **Where**: `app/common.server/backfill/bulk-op.ts`
 
+### JS Web embed status detection false positive
+- [ ] "Action required" banner on JS Web Config page even though embed is ON in theme
+- [ ] `appEmbedStatus()` checks `APP_POSTHOG_JS_WEB_THEME_APP_UUID` env var against theme blocks
+- [ ] Likely: UUID mismatch after app fork — Shopify assigned new block UUID, env var has old one
+- [ ] Fix: inspect block type in theme editor, update Railway env var `APP_POSTHOG_JS_WEB_THEME_APP_UUID`
+- **Where**: `app/common.client/procedures/app-embed-status.ts:44`
+
 ## Done ✅
 
 - [x] Web order filter (`source_name === "web"`) on Order Completed
