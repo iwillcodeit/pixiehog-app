@@ -12,7 +12,7 @@ direct_api_mode = "online"
 embedded_app_direct_api_access = true
 
 [access_scopes]
-scopes = "read_customer_events,read_themes,write_pixels,read_orders,read_customers"
+scopes = "read_customer_events,read_themes,write_pixels,read_orders,read_customers,read_products"
 
 [auth]
 redirect_urls = [
