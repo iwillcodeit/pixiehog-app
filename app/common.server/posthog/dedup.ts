@@ -30,3 +30,41 @@ export function generateCheckoutEventUUID(
   }
   return uuidv5(`${shopDomain}:${checkoutToken}:${eventName}`, PIXIEHOG_NAMESPACE);
 }
+
+/**
+ * Deterministic UUID for any order event (web or non-web).
+ *
+ * Prefers `checkoutToken` so server-side and web-pixel events for the same
+ * Online Store order produce identical UUIDs (matches generateCheckoutEventUUID).
+ *
+ * Falls back to `order_${orderId}` for orders without a checkout token
+ * (subscriptions, POS, draft orders, API). This guarantees backfill events
+ * match live webhook events for the same order, preventing duplicates when
+ * historical Shopify data is replayed through PostHog `/batch/` with
+ * `historical_migration: true`.
+ */
+export function generateOrderEventUUID(
+  shopDomain: string,
+  checkoutToken: string | null | undefined,
+  orderId: number | string,
+  eventName: string,
+): string {
+  if (!shopDomain.endsWith(".myshopify.com")) {
+    console.warn(`[nuances-dedup] shopDomain "${shopDomain}" does not look like a myshopify domain — dedup UUIDs may not match the web pixel`);
+  }
+  const seed = checkoutToken
+    ? `${shopDomain}:${checkoutToken}:${eventName}`
+    : `${shopDomain}:order_${orderId}:${eventName}`;
+  return uuidv5(seed, PIXIEHOG_NAMESPACE);
+}
+
+/**
+ * Deterministic UUID for a refund event. Refunds have no checkout token
+ * dimension; one refund_id maps to exactly one PostHog "Order Refunded" event.
+ */
+export function generateRefundUUID(
+  shopDomain: string,
+  refundId: number | string,
+): string {
+  return uuidv5(`${shopDomain}:refund_${refundId}:Order Refunded`, PIXIEHOG_NAMESPACE);
+}

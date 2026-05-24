@@ -4,7 +4,7 @@ import db from "../db.server";
 import { capturePostHogEvents, identifyPostHog } from "../common.server/posthog/posthog-capture";
 import { mapOrderCompleted } from "../common.server/posthog/mappers/order-completed";
 import { resolveDistinctId, buildIdentifyProperties } from "../common.server/posthog/identity";
-import { generateCheckoutEventUUID } from "../common.server/posthog/dedup";
+import { generateOrderEventUUID } from "../common.server/posthog/dedup";
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { shop, payload } = await authenticate.webhook(request);
@@ -24,17 +24,22 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const isAnonymous = shopConfig.dataCollectionStrategy !== "non-anonymized";
   const isWebOrder = order.source_name === "web";
 
-  const promises: Promise<void>[] = [];
+  const promises: Promise<unknown>[] = [];
 
   // Skip Order Completed for web orders — the web pixel already captures it
   // with session, UTM, replay, and feature flag data that the server doesn't have.
   // Only send for non-web channels (subscriptions, POS, draft orders, API, etc.)
   if (!isWebOrder) {
     const eventProps = mapOrderCompleted(order, shop);
-    // Deterministic UUID prevents duplicate events from Shopify webhook retries
-    const eventUUID = order.checkout_token
-      ? generateCheckoutEventUUID(shop, order.checkout_token, "Order Completed")
-      : undefined;
+    // Deterministic UUID prevents duplicates from Shopify webhook retries AND
+    // from historical backfill replays. Falls back to `order_${id}` seed when
+    // checkout_token is absent (subscriptions, POS, draft orders).
+    const eventUUID = generateOrderEventUUID(
+      shop,
+      order.checkout_token,
+      order.id,
+      "Order Completed",
+    );
     promises.push(
       capturePostHogEvents(config, [
         {

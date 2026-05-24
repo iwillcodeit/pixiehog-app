@@ -43,3 +43,28 @@ model Shop {
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
 }
+
+model BackfillRun {
+  id                       String    @id @default(cuid())
+  shop                     String
+  since                    DateTime?
+  until                    DateTime?
+  dryRun                   Boolean   @default(false)
+  bulkOperationIdOrders    String?
+  bulkOperationIdCustomers String?
+  jsonlOffsetOrders        Int       @default(0)
+  jsonlOffsetCustomers     Int       @default(0)
+  ordersProcessed          Int       @default(0)
+  refundsProcessed         Int       @default(0)
+  cancellationsProcessed   Int       @default(0)
+  identifiesProcessed      Int       @default(0)
+  excludedAlreadyCaptured  Int       @default(0)
+  preflightSnapshot        Json?
+  postflightSnapshot       Json?
+  status                   String    @default("pending")
+  error                    String?
+  startedAt                DateTime  @default(now())
+  finishedAt               DateTime?
+
+  @@index([shop, status])
+}

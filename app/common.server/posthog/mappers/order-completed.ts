@@ -22,6 +22,9 @@ interface ShopifyLineItem {
     discount_application_index?: number;
   }>;
   product_exists?: boolean;
+  selling_plan_allocation?: {
+    selling_plan?: { name?: string };
+  } | null;
 }
 
 interface ShopifyOrderPayload {
@@ -40,6 +43,10 @@ interface ShopifyOrderPayload {
   discount_codes?: Array<{ code?: string; amount?: string; type?: string }>;
   line_items?: ShopifyLineItem[];
   source_name?: string | null;
+  customer?: {
+    orders_count?: number;
+    [key: string]: unknown;
+  } | null;
   [key: string]: unknown;
 }
 
@@ -61,7 +68,8 @@ export function mapOrderCompleted(order: ShopifyOrderPayload, shopDomain: string
       ? order.discount_codes.map((d) => d.code).join(",")
       : null;
 
-  const products = (order.line_items || []).map((item: ShopifyLineItem, index: number) => ({
+  const lineItems = order.line_items || [];
+  const products = lineItems.map((item: ShopifyLineItem, index: number) => ({
     product_id: item.product_id ? String(item.product_id) : null,
     variant_id: item.variant_id ? String(item.variant_id) : null,
     sku: item.sku || null,
@@ -78,7 +86,9 @@ export function mapOrderCompleted(order: ShopifyOrderPayload, shopDomain: string
     position: index + 1,
     url: null,
     image_url: null,
+    selling_plan_name: item.selling_plan_allocation?.selling_plan?.name ?? null,
   }));
+  const hasSubscription = lineItems.some((item) => item.selling_plan_allocation != null);
 
   return {
     checkout_id: order.checkout_token || null,
@@ -103,8 +113,13 @@ export function mapOrderCompleted(order: ShopifyOrderPayload, shopDomain: string
     referring_site: order.referring_site || null,
     landing_site: order.landing_site || null,
     customer_orders_count: order.customer?.orders_count ?? null,
+    // Dual-key with web pixel name so dashboard 607753 "Identified only" tiles
+    // (insights koi6iCDF + hd0r8Gsb) — which filter on `ordersCount` —
+    // count nuances-server contributions too.
+    ordersCount: order.customer?.orders_count ?? null,
     presentment_currency: order.presentment_currency || null,
     event_source: "server",
+    has_subscription: hasSubscription,
     products,
   };
 }
