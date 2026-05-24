@@ -337,7 +337,7 @@ export function toRestCustomer(c: GqlCustomerNode): ShopifyCustomerPayload {
     first_name: c.firstName ?? null,
     last_name: c.lastName ?? null,
     phone: c.phone ?? null,
-    orders_count: c.numberOfOrders != null ? Number.parseInt(c.numberOfOrders, 10) : undefined,
+    orders_count: c.numberOfOrders != null ? (Number.parseInt(c.numberOfOrders, 10) || 0) : undefined,
     total_spent: c.amountSpent?.amount ?? null,
     tags: (c.tags ?? []).join(", "),
     state: c.state ?? undefined,

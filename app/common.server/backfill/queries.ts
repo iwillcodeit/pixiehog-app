@@ -98,7 +98,7 @@ export function buildOrdersBulkQuery(queryFilter: string): string {
                     country
                     countryCodeV2
                   }
-                  lineItems {
+                  lineItems(first: 250) {
                     edges {
                       node {
                         id
