@@ -51,6 +51,9 @@ export default function App() {
         <Link to="/app/js-web-posthog-settings">
           JS Web Config
         </Link>
+        <Link to="/app/backfill">
+          Backfill
+        </Link>
       </NavMenu>
       <Outlet />
       <PosthogInit/>
