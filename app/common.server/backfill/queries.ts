@@ -121,9 +121,6 @@ export function buildOrdersBulkQuery(queryFilter: string): string {
                           shopMoney { amount currencyCode }
                           presentmentMoney { amount currencyCode }
                         }
-                        sellingPlanAllocation {
-                          sellingPlan { name }
-                        }
                       }
                     }
                   }
