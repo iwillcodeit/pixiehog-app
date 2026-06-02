@@ -383,6 +383,22 @@ export async function runBackfill(args: RunBackfillArgs): Promise<void> {
   }
 
   // ---- 5. customers bulk op (authoritative identify) ----
+  // Skip entirely in dry-run — this fetches ALL customers (no date filter) and
+  // can take 30-60+ min on Shopify. Not needed for dry-run validation.
+  if (dryRun) {
+    console.log("[backfill] dryRun: skipping customers bulk op");
+    console.log(`[backfill] run ${runId} complete (dry). skippedWebOrders=${totalSkippedWeb} skippedNoIdentity=${totalSkippedNoId}`);
+    try {
+      const postflightRows = await fetchEventSnapshot(excludeSetCreds);
+      await recordSnapshot(runId, "postflight", postflightRows);
+    } catch (err) {
+      console.warn("[backfill] postflight snapshot failed (continuing):", err);
+      await recordSnapshot(runId, "postflight", { error: String(err) });
+    }
+    await setStatus(runId, "completed");
+    return;
+  }
+
   // No date filter — fetch ALL customers so returning customers (created before
   // the outage window) get their authoritative total_spent/orders_count corrected.
   const customersBulkId = await startBulkOp(
