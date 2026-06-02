@@ -21,7 +21,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
 
   const config = { apiKey: shopConfig.posthogApiKey, apiHost: shopConfig.posthogApiHost };
-  const isAnonymous = shopConfig.dataCollectionStrategy !== "non-anonymized";
+  const isAnonymous = shopConfig.dataCollectionStrategy === "anonymized";
 
   // Dedup UUID includes updated_at so each status change gets through
   // but Shopify webhook retries (same updated_at) are deduplicated

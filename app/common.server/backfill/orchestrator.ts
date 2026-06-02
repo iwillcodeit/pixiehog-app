@@ -181,7 +181,7 @@ export async function runBackfill(args: RunBackfillArgs): Promise<void> {
     apiKey: shop.posthogApiKey,
     apiHost: shop.posthogApiHost,
   };
-  const isAnonymous = shop.dataCollectionStrategy !== "non-anonymized";
+  const isAnonymous = shop.dataCollectionStrategy === "anonymized";
 
   await setStatus(runId, "running");
 

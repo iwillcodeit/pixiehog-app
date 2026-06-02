@@ -21,7 +21,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
 
   const config = { apiKey: shopConfig.posthogApiKey, apiHost: shopConfig.posthogApiHost };
-  const isAnonymous = shopConfig.dataCollectionStrategy !== "non-anonymized";
+  const isAnonymous = shopConfig.dataCollectionStrategy === "anonymized";
   const isWebOrder = order.source_name === "web";
 
   const promises: Promise<unknown>[] = [];

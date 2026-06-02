@@ -16,7 +16,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
 
   // Only send $identify with PII when data collection strategy explicitly allows it
-  if (shopConfig.dataCollectionStrategy !== "non-anonymized") {
+  if (shopConfig.dataCollectionStrategy === "anonymized") {
     return new Response();
   }
 
