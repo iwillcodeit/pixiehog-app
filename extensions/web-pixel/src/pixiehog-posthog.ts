@@ -7,7 +7,7 @@ export class PixieHogPostHog extends PostHog {
     return 'pixiehog';
   }
   getLibraryVersion(): string {
-    return '1.0.6';
+    return '1.1.0';
   }
 
   getCommonEventProperties() {

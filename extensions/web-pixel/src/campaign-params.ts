@@ -1,3 +1,7 @@
+/**
+ * Query parameters PostHog treats as campaign/attribution params.
+ * Mirrors posthog-js's CAMPAIGN_PARAMS list.
+ */
 export const CAMPAIGN_PARAMS = [
   'gclid', // google ads
   'gclsrc', // google ads 360
@@ -25,11 +29,42 @@ export const CAMPAIGN_PARAMS = [
   'mc_cid', // mailchimp campaign id
 ]
 
+export type CampaignParams = {
+  /** `$initial_<param>` keys — for `$set_once` (first touch). */
+  firstTouchCampaignParams: Record<string, string>;
+  /** Plain `<param>` keys — event properties and last-touch person properties. */
+  lastTouchCampaignParams: Record<string, string>;
+};
 
-export function calculateCampaignParams(url: string) {
-  const urlObj = new URL(url);
-  const searchParams = urlObj.searchParams;
-  const firstTouchCampaignParams = Object.fromEntries(CAMPAIGN_PARAMS.map((param) => [`$initial_${param}`, searchParams.get(param)]))
-  const lastTouchCampaignParams = Object.fromEntries(CAMPAIGN_PARAMS.map((param) => [`$${param}`, searchParams.get(param)]))
-  return {firstTouchCampaignParams, lastTouchCampaignParams}
+/**
+ * Extract campaign params from a URL, following posthog-js naming conventions:
+ *
+ * - last-touch keys are **un-prefixed** (`utm_source`, `gclid`, …). PostHog's sessions table derives
+ *   `$entry_utm_source` / `$channel_type` from the plain `utm_source` event property, and person-property
+ *   ingestion lifts the same plain keys. A `$utm_source` key is read by nothing (that was the bug that
+ *   made every pixel-first session lose its channel attribution).
+ * - first-touch keys are `$initial_<param>` — used in `$set_once`.
+ *
+ * Missing or empty params are **omitted**, never sent as `null`: an explicit `null` inside `$set_once`
+ * is stored by PostHog and permanently blocks the real first-touch value from ever being written.
+ *
+ * Never throws — an unparsable URL yields empty objects (this runs inside `register()`; a throw there
+ * would disable the whole pixel).
+ */
+export function calculateCampaignParams(url: string): CampaignParams {
+  let searchParams: URLSearchParams;
+  try {
+    searchParams = new URL(url).searchParams;
+  } catch {
+    return { firstTouchCampaignParams: {}, lastTouchCampaignParams: {} };
+  }
+  const firstTouchCampaignParams: Record<string, string> = {};
+  const lastTouchCampaignParams: Record<string, string> = {};
+  for (const param of CAMPAIGN_PARAMS) {
+    const value = searchParams.get(param);
+    if (!value) continue;
+    lastTouchCampaignParams[param] = value;
+    firstTouchCampaignParams[`$initial_${param}`] = value;
+  }
+  return { firstTouchCampaignParams, lastTouchCampaignParams };
 }
