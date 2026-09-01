@@ -35,17 +35,20 @@ export type BuildEventPropertiesArgs = {
  *   boot URL and the event URL can differ. DOM events (`clicked`, `input_*`, `form_submitted`) have no
  *   document context and fall back to the boot snapshot. Keys are plain (`utm_source`), see campaign-params.
  * - **`$set_once` (first touch)**: boot snapshot (`$initial_utm_*` + `$initial_browser` …), nulls stripped.
+ * - **customer fields** (`email`, `ordersCount`, …) are flattened into top-level event properties for identified
+ *   visitors — PostHog insights (New vs Returning, "Order (First Purchase)" action) filter on `ordersCount`.
  * - **`$set`**: customer fields only (omitted when there is no customer; nulls stripped so an absent phone/lastName
  *   no longer clobbers an existing person property). Browser / URL / UTM person properties are lifted from event properties
  *   by PostHog ingestion on every event, so sending them explicitly is redundant and would pin stale
  *   boot-time values on the person.
- * - **anonymous**: no `$set` / `$set_once` at all — consent refused means we never write person properties,
- *   on any event (previously only `page_viewed` was protected).
+ * - **anonymous**: no customer fields, no `$set` / `$set_once` — consent refused means no PII on events and no
+ *   person properties, on any event (previously only `page_viewed` was protected).
  */
 export function buildEventProperties(args: BuildEventPropertiesArgs): Record<string, unknown> {
   const campaign = args.eventHref ? calculateCampaignParams(args.eventHref) : args.initCampaign;
   const properties: Record<string, unknown> = {
     ...args.base,
+    ...(args.anonymous ? {} : args.customer ?? {}),
     ...campaign.lastTouchCampaignParams,
   };
   if (!args.anonymous) {

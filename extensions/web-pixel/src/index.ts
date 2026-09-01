@@ -222,8 +222,12 @@ register(async (extensionApi) => {
   }
   const featureFlags = await calculateFeatureFlags();
 
-  const anonymous: boolean = (() =>{
-
+  /**
+   * Whether events must be anonymised. Evaluated per event, not once at boot: under
+   * `non-anonymized-by-consent` the visitor can withdraw consent mid-page (`visitorConsentCollected`
+   * updates `customerPrivacyStatus`) and every later event must honour the new state.
+   */
+  const isAnonymous = (): boolean => {
     if(settings.data_collection_strategy == 'anonymized') {
       return true
     }
@@ -234,7 +238,9 @@ register(async (extensionApi) => {
       return  !customerPrivacyStatus.analyticsProcessingAllowed
     }
     return true
-  })()
+  }
+  /** Boot-time consent state — used only for the boot-time identify below. */
+  const anonymous: boolean = isAnonymous()
 
   type ValueOf<T> = T[keyof T];
   function preprocessEvent<T extends ValueOf<StandardEvents>>(fn: (t: T, u: string | undefined, p: boolean) => void) {
@@ -247,6 +253,7 @@ register(async (extensionApi) => {
       const validateEventUUID: string | undefined = extractEventUUID(uuid);
     
       const PXHOG_ANONYMOUS_KEY = 'pxhog_anonymous_key';
+      const anonymous = isAnonymous();
 
       const localStorageAnonymous = await localStorage.getItem(PXHOG_ANONYMOUS_KEY) as 'true' | 'false' | null;
       if (localStorageAnonymous === null) {
@@ -315,8 +322,7 @@ register(async (extensionApi) => {
     /** how to calculate active_feature_flags */
     //$active_feature_flags: null,
     shop: init.data.shop as any,
-    // Consent refused → no customer PII on events (the per-handler `customer: null` never removed these flattened keys)
-    ...(anonymous ? {} : (init.data.customer as any)),
+    // customer fields are added per event in `buildEventProperties` (consent-dependent)
     // this might be out of date if the store uses side-cart
     ...(init.data.cart as any),
   } as const;

@@ -56,12 +56,20 @@ describe('buildEventProperties', () => {
     expect(props.utm_source).toBe('Klaviyo');
   });
 
-  it('sends no person properties at all when anonymous', () => {
+  it('sends no person properties and no customer fields when anonymous', () => {
     const props = build({ anonymous: true });
     expect(props).not.toHaveProperty('$set');
     expect(props).not.toHaveProperty('$set_once');
+    expect(props).not.toHaveProperty('email');
+    expect(props).not.toHaveProperty('firstName');
     // event-level attribution is still there
     expect(props.utm_source).toBe('Klaviyo');
+  });
+
+  it('flattens customer fields into event properties when identified (New vs Returning insights read ordersCount)', () => {
+    const props = build({ customer: { ...customer, ordersCount: 3 } });
+    expect(props.email).toBe('jane@example.com');
+    expect(props.ordersCount).toBe(3);
   });
 
   it('never puts nulls into $set_once', () => {
