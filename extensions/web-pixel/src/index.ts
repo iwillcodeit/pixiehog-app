@@ -7,7 +7,7 @@ import { isNumber } from './type-utils';
 import type { WebPixelEventsSettings } from '../../../common/dto/web-pixel-events-settings.dto';
 import { calculateCampaignParams } from './campaign-params';
 import { buildEventProperties, redactElementValue } from './event-properties';
-import { decideAnonymousTransition, shouldIdentifyCustomer, type AnonymousMarker } from './consent-state';
+import { decideAnonymousTransition, shouldIdentifyCustomer, shouldIdentifyTypedEmail, type AnonymousMarker } from './consent-state';
 import { UAParser } from 'ua-parser-js';
 import { getSearchEngine } from './utils';
 import { PixieHogPostHog } from './pixiehog-posthog';
@@ -468,7 +468,7 @@ register(async (extensionApi) => {
         });
 
         const email = event.data.checkout.email
-        if (email && anonymous == false && distinctId != email) {
+        if (email && shouldIdentifyTypedEmail({ anonymous, typedEmail: email, customerEmail: init.data.customer?.email, currentDistinctId: distinctId })) {
           await setDistinctId(email)
           await posthog.identify(email)
         }
@@ -719,6 +719,8 @@ register(async (extensionApi) => {
           .filter((el): el is [string, string] => !!el)
       );
       const baseProperties = eventProperties(event, anonymous);
+      // guests only: a logged-in customer keeps their account identity and email (see shouldIdentifyTypedEmail)
+      const identifyByEmail = !!email && shouldIdentifyTypedEmail({ anonymous, typedEmail: email, customerEmail: init.data.customer?.email, currentDistinctId: distinctId });
       await posthog.captureStatelessPublic(distinctId, eventName, {
         ...featureFlags,
         $session_id : sessionId,
@@ -734,8 +736,7 @@ register(async (extensionApi) => {
         form: event.data.element.elements.map((el) => redactElementValue(el, anonymous)) as any,
         ...(anonymous == false && { form_body: formBody as any }),
         action: event.data.element.action as any,
-        ...(email &&
-          anonymous == false && {
+        ...(identifyByEmail && {
             $set: {
               ...(baseProperties.$set as Record<string, unknown> | undefined),
               email: email,
@@ -746,7 +747,7 @@ register(async (extensionApi) => {
         timestamp: new Date(event.timestamp),
         ...(uuid ? { uuid: uuid } : {}), 
       });
-      if (email && anonymous == false && distinctId != email) {
+      if (identifyByEmail) {
         await setDistinctId(email)
         await posthog.identify(email)
       }

@@ -36,11 +36,35 @@ export type IdentifyCustomerInput = {
   currentDistinctId: unknown;
   /**
    * `true` before each event: only promote an anonymous (UUID) id, never replace an identity already
-   * set mid-page (e.g. a different email submitted at checkout, which the handler identified). `false`
-   * at boot, where the logged-in account wins (shared device: previous customer's id is replaced).
+   * set mid-page (e.g. by the theme's posthog-js). `false` at boot, where the logged-in account wins
+   * (shared device: previous customer's id is replaced).
    */
   fromAnonymousOnly: boolean;
 };
+
+export type IdentifyTypedEmailInput = {
+  anonymous: boolean;
+  /** Email submitted at checkout or in a storefront form. */
+  typedEmail: string | null | undefined;
+  /** Logged-in customer's email, if any. */
+  customerEmail: string | null | undefined;
+  currentDistinctId: unknown;
+};
+
+/**
+ * Whether an email typed at checkout / in a form may identify the visitor (and be `$set` as `email`).
+ * Only for guests: a logged-in customer is identified by their account email, and every event carries
+ * that account's details, so switching the identity to a different typed email would push the account's
+ * details onto the typed email's profile (and flip back to the account on the next identify).
+ */
+export function shouldIdentifyTypedEmail(input: IdentifyTypedEmailInput): boolean {
+  return (
+    !!input.typedEmail &&
+    !input.anonymous &&
+    !input.customerEmail &&
+    input.currentDistinctId !== input.typedEmail
+  );
+}
 
 /** Whether the logged-in customer must be identified (by email) before the next event is sent. */
 export function shouldIdentifyCustomer(input: IdentifyCustomerInput): boolean {
