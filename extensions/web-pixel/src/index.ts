@@ -1,4 +1,4 @@
-import type { CustomerPrivacyPayload, PixelEvents, StandardEvents } from '@shopify/web-pixels-extension';
+import type { Context, CustomerPrivacyPayload, PixelEvents, StandardEvents } from '@shopify/web-pixels-extension';
 import { register } from '@shopify/web-pixels-extension';
 import { v7 as uuidv7 } from 'uuid';
 import type { WebPixelSettings } from '../../../common/dto/web-pixel-settings.dto';
@@ -6,6 +6,8 @@ import { extractEventUUID } from './validate-uuid';
 import { isNumber } from './type-utils';
 import type { WebPixelEventsSettings } from '../../../common/dto/web-pixel-events-settings.dto';
 import { calculateCampaignParams } from './campaign-params';
+import { buildEventProperties, redactElementValue } from './event-properties';
+import { decideAnonymousTransition, shouldIdentifyCustomer, shouldIdentifyTypedEmail, type AnonymousMarker } from './consent-state';
 import { UAParser } from 'ua-parser-js';
 import { getSearchEngine } from './utils';
 import { PixieHogPostHog } from './pixiehog-posthog';
@@ -63,7 +65,8 @@ register(async (extensionApi) => {
   if (!posthog_api_key) {
     throw new Error('ph_project_api_key is undefined');
   }
-  const { firstTouchCampaignParams, lastTouchCampaignParams } = calculateCampaignParams(init.context.document.location.href)
+  /** Campaign params of the page the sandbox booted on. Per-event values are derived in `eventProperties`. */
+  const initCampaign = calculateCampaignParams(init.context.document.location.href)
   let customerPrivacyStatus: CustomerPrivacyPayload['customerPrivacy'] = init.customerPrivacy;
   const POSTHOG_WINDOW_KEY = `ph_${posthog_api_key}_window_id`;
   const POSTHOG_KEY = `ph_${posthog_api_key}_posthog`;
@@ -72,18 +75,33 @@ register(async (extensionApi) => {
     const webPostHogPersistedString = await localStorage.getItem(POSTHOG_KEY);
     return webPostHogPersistedString
   }
+  /** Parsed posthog-js persistence blob; a corrupt blob yields `{}` instead of throwing inside `register()`. */
+  async function readPostHogLocalStorage(): Promise<Record<string, unknown>> {
+    const persistedString = await getPostHogLocalStorage();
+    if (!persistedString) return {};
+    try {
+      const parsed = JSON.parse(persistedString);
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+  /**
+   * Merge into posthog-js's persistence blob instead of replacing it: the storefront posthog-js instance
+   * keeps `$sesid`, `$initial_person_info`, feature flag payloads… under the same key.
+   */
+  async function mergePostHogLocalStorage(patch: Record<string, unknown>): Promise<void> {
+    const persisted = await readPostHogLocalStorage();
+    await localStorage.setItem(POSTHOG_KEY, JSON.stringify({ ...persisted, ...patch }));
+  }
   async function resolveDistinctId(): Promise<string> {
-    const webPostHogPersistedString = await getPostHogLocalStorage()
-    const webPostHogPersisted: {
-      distinct_id: string;
-    } | null = webPostHogPersistedString ? JSON.parse(webPostHogPersistedString) : null;
-
-    if (webPostHogPersisted?.distinct_id) {
-      return webPostHogPersisted?.distinct_id;
+    const webPostHogPersisted = await readPostHogLocalStorage();
+    if (typeof webPostHogPersisted.distinct_id === 'string' && webPostHogPersisted.distinct_id) {
+      return webPostHogPersisted.distinct_id;
     }
 
     const distinct_id = uuidv7();
-    await localStorage.setItem(POSTHOG_KEY, JSON.stringify({ distinct_id }));
+    await mergePostHogLocalStorage({ distinct_id });
     return distinct_id;
   }
 
@@ -163,11 +181,57 @@ register(async (extensionApi) => {
     }
   }
 
+  /**
+   * Full reset on the identified → anonymous flip (consent withdrawn): deliberately REPLACES the whole
+   * persistence blob so `$sesid`, `$device_id`, `$user_state`… are dropped along with the distinct_id.
+   * This is the pixel's `posthog.reset(true)` — do not turn it into a merge.
+   */
   async function resetPosthog() {
     const distinct_id = uuidv7();
     await localStorage.setItem(POSTHOG_KEY, JSON.stringify({ distinct_id }));
   }
 
+  /**
+   * Whether events must be anonymised. Evaluated per event, not once at boot: under
+   * `non-anonymized-by-consent` the visitor can withdraw consent mid-page (`visitorConsentCollected`
+   * updates `customerPrivacyStatus`) and every later event must honour the new state.
+   */
+  const isAnonymous = (): boolean => {
+    if(settings.data_collection_strategy == 'anonymized') {
+      return true
+    }
+    if(settings.data_collection_strategy == 'non-anonymized') {
+      return false
+    }
+    if(settings.data_collection_strategy == 'non-anonymized-by-consent') {
+      return  !customerPrivacyStatus.analyticsProcessingAllowed
+    }
+    return true
+  }
+
+  const PXHOG_ANONYMOUS_KEY = 'pxhog_anonymous_key';
+  /**
+   * Reconcile persisted identity with the current consent state and return `anonymous`. Runs at boot
+   * (before the distinct_id is resolved and feature flags are preloaded) and before every event, so an
+   * identified distinct_id left in the shared blob — by the pixel or by the theme's posthog-js — is
+   * wiped before anything is sent for an anonymous visitor. Decision logic lives in `consent-state.ts`.
+   */
+  async function syncAnonymousState(): Promise<boolean> {
+    const anonymous = isAnonymous();
+    const marker = (await localStorage.getItem(PXHOG_ANONYMOUS_KEY)) as AnonymousMarker;
+    const { distinct_id } = await readPostHogLocalStorage();
+    const transition = decideAnonymousTransition({ anonymous, marker, storedDistinctId: distinct_id });
+    if (transition.reset) {
+      await resetPosthog();
+    }
+    if (transition.marker !== null) {
+      await localStorage.setItem(PXHOG_ANONYMOUS_KEY, transition.marker);
+    }
+    return anonymous;
+  }
+
+  /** Boot-time consent state — used only for the boot-time identify. */
+  const anonymous: boolean = await syncAnonymousState()
   const globalDistinctId = await resolveDistinctId()
   const posthog = new PixieHogPostHog(posthog_api_key, {
     host: posthog_api_host,
@@ -200,19 +264,21 @@ register(async (extensionApi) => {
   }
   const featureFlags = await calculateFeatureFlags();
 
-  const anonymous: boolean = (() =>{
-
-    if(settings.data_collection_strategy == 'anonymized') {
-      return true
+  /**
+   * Identify the logged-in customer by email whenever events may carry their identity. Runs at boot and
+   * before every event: consent can be granted mid-page (`visitorConsentCollected`), and without this the
+   * now non-anonymous events would attach customer fields to the anonymous UUID instead of the customer.
+   * Before events it only promotes an anonymous id (see `shouldIdentifyCustomer`).
+   */
+  async function identifyCustomer(anonymous: boolean, fromAnonymousOnly: boolean) {
+    const email = init.data.customer?.email
+    const currentDistinctId = await resolveDistinctId()
+    if (!email || !shouldIdentifyCustomer({ anonymous, email, currentDistinctId, fromAnonymousOnly })) {
+      return
     }
-    if(settings.data_collection_strategy == 'non-anonymized') {
-      return false
-    }
-    if(settings.data_collection_strategy == 'non-anonymized-by-consent') {
-      return  !customerPrivacyStatus.analyticsProcessingAllowed
-    }
-    return true
-  })()
+    await mergePostHogLocalStorage({ distinct_id: email })
+    await posthog.identify(email)
+  }
 
   type ValueOf<T> = T[keyof T];
   function preprocessEvent<T extends ValueOf<StandardEvents>>(fn: (t: T, u: string | undefined, p: boolean) => void) {
@@ -223,24 +289,9 @@ register(async (extensionApi) => {
       }
       const uuid: string | undefined = event.id;
       const validateEventUUID: string | undefined = extractEventUUID(uuid);
-    
-      const PXHOG_ANONYMOUS_KEY = 'pxhog_anonymous_key';
+      const anonymous = await syncAnonymousState();
+      await identifyCustomer(anonymous, true);
 
-      const localStorageAnonymous = await localStorage.getItem(PXHOG_ANONYMOUS_KEY) as 'true' | 'false' | null;
-      if (localStorageAnonymous === null) {
-        await localStorage.setItem(PXHOG_ANONYMOUS_KEY, anonymous);
-      }
-      if (
-        localStorageAnonymous !== null &&
-        localStorageAnonymous != String(anonymous) && anonymous == true) {
-        await resetPosthog();
-      }
-      if (
-        localStorageAnonymous !== null &&
-        localStorageAnonymous != String(anonymous)) {
-        await localStorage.setItem(PXHOG_ANONYMOUS_KEY, anonymous);
-      }
-      
       fn(event, validateEventUUID, anonymous);
     };
   }
@@ -293,50 +344,46 @@ register(async (extensionApi) => {
     /** how to calculate active_feature_flags */
     //$active_feature_flags: null,
     shop: init.data.shop as any,
-    ...(init.data.customer as any),
+    // customer fields are added per event in `buildEventProperties` (consent-dependent)
     // this might be out of date if the store uses side-cart
     ...(init.data.cart as any),
-    //https://posthog.com/docs/product-analytics/person-properties
-    $set: {
-      ...lastTouchCampaignParams,
-      ...init.data.customer as any,
-      $browser: userAgent?.browser.name || null,
-      $browser_version: userAgent?.browser.version || null,
-      $os: userAgent?.os.name || null,
-      $os_version: userAgent?.os.version || null,
-      $device_type: userAgent?.device.type as JsonType || null,
-      $current_url: init.context.document.location.href,
-      $pathname: currentURLObject?.pathname || null,
-      $referrer: init.context.document.referrer || '$direct',
-      $referring_domain: referringURLObject?.host || '$direct',
-    },
-    $set_once: {
-      ...firstTouchCampaignParams,
-      $initial_browser: userAgent?.browser.name || null,
-      $initial_browser_version: userAgent?.browser.version || null,
-      $initial_os: userAgent?.os.name || null,
-      $initial_os_version: userAgent?.os.version || null,
-      $initial_device_type: userAgent?.device.type as JsonType || null,
-      $initial_current_url: init.context.document.location.href,
-      $initial_pathname: currentURLObject?.pathname || null,
-      $initial_referrer: init.context.document.referrer || '$direct',
-      $initial_referring_domain: referringURLObject?.host || '$direct',
-    },
-    ...lastTouchCampaignParams,
   } as const;
 
-  const setDistinctId = async (str: string) => {
-    const webPostHogPersistedString = await getPostHogLocalStorage()
-    const webPostHogPersisted: {
-      distinct_id: string;
-    } | null = webPostHogPersistedString ? JSON.parse(webPostHogPersistedString) : {};
-    await localStorage.setItem(POSTHOG_KEY, JSON.stringify({...webPostHogPersisted, distinct_id: str }));
-  }
+  /**
+   * First-touch device/referrer properties for `$set_once` (boot-time snapshot).
+   * Nulls are stripped in `buildEventProperties` — an explicit null in `$set_once` is permanent.
+   * https://posthog.com/docs/product-analytics/person-properties
+   */
+  const setOnceBase = {
+    $initial_browser: userAgent?.browser.name || null,
+    $initial_browser_version: userAgent?.browser.version || null,
+    $initial_os: userAgent?.os.name || null,
+    $initial_os_version: userAgent?.os.version || null,
+    $initial_device_type: userAgent?.device.type as JsonType || null,
+    $initial_current_url: init.context.document.location.href,
+    $initial_pathname: currentURLObject?.pathname || null,
+    $initial_referrer: init.context.document.referrer || '$direct',
+    $initial_referring_domain: referringURLObject?.host || '$direct',
+  };
 
-  if (init.data.customer?.email && anonymous == false && globalDistinctId != init.data.customer.email) {
-    await setDistinctId(init.data.customer?.email)
-    await posthog.identify(init.data.customer?.email)
-  }
+  /**
+   * Properties for one event: boot-time base + campaign params from the event's own URL + person
+   * properties (only when not anonymous). `name` is required in the type so DOM events — which have no
+   * `context` at all — still satisfy it (TS weak-type check).
+   */
+  const eventProperties = (event: { name: string; context?: Context }, anonymous: boolean) =>
+    buildEventProperties({
+      base: initProperties,
+      customer: init.data.customer as Record<string, unknown> | null | undefined,
+      initCampaign,
+      eventHref: event.context?.document?.location?.href,
+      anonymous,
+      setOnceBase,
+    });
+
+  const setDistinctId = (str: string) => mergePostHogLocalStorage({ distinct_id: str });
+
+  await identifyCustomer(anonymous, false)
 
   const resolveEventEcommerceName = (name: string) => {
     if (!posthogEcommerceSpecEnabled) {
@@ -386,7 +433,7 @@ register(async (extensionApi) => {
 
         await posthog.captureStatelessPublic(distinctId, eventName, {
           ...featureFlags,
-          ...initProperties,
+          ...eventProperties(event, anonymous),
           ...(anonymous == true && {
             customer: null,
             purchasingCompany: null,
@@ -398,7 +445,7 @@ register(async (extensionApi) => {
           $session_id : sessionId,
           $configured_session_timeout_ms: sessionTimeoutMs,
           $window_id: windowId,
-          ...(event.data.checkout),
+          ...(event.data.checkout as any),
             ...(anonymous == true && {
               billingAddress: null,
               email: null,
@@ -421,7 +468,7 @@ register(async (extensionApi) => {
         });
 
         const email = event.data.checkout.email
-        if (email && anonymous == false && distinctId != email) {
+        if (email && shouldIdentifyTypedEmail({ anonymous, typedEmail: email, customerEmail: init.data.customer?.email, currentDistinctId: distinctId })) {
           await setDistinctId(email)
           await posthog.identify(email)
         }
@@ -442,7 +489,7 @@ register(async (extensionApi) => {
         posthog.captureStatelessPublic(distinctId, eventName, 
           {
             ...featureFlags,
-            ...initProperties,
+            ...eventProperties(event, anonymous),
             ...(anonymous == true && {
               customer: undefined,
               purchasingCompany: undefined,
@@ -484,14 +531,15 @@ register(async (extensionApi) => {
           $configured_session_timeout_ms: sessionTimeoutMs,
           $window_id: windowId,
           ...{
-            ...initProperties,
+            ...eventProperties(event, anonymous),
             ...(anonymous == true && {
               customer: undefined,
               purchasingCompany: undefined,
             }),
           },
           client_id: event.clientId,
-          ...event.data.element as any,
+          // `value` is user input (PII on form fields): dropped when anonymous
+          ...redactElementValue(event.data.element as any, anonymous),
           ...resolveEventEcommerceSpecBody(event)
         }, {
           ...(uuid ? { uuid: uuid } : {}),
@@ -509,11 +557,10 @@ register(async (extensionApi) => {
       const eventName = resolveEventEcommerceName(event.name);
       posthog.captureStatelessPublic(distinctId, eventName, {
         ...featureFlags,
-        ...initProperties,
+        ...eventProperties(event, anonymous),
         ...(anonymous == true && {
           customer: null,
           purchasingCompany: null,
-          $process_person_profile: false,
         }),
         client_id: event.clientId,
         url: event.context.document.location.href,
@@ -522,12 +569,7 @@ register(async (extensionApi) => {
         $configured_session_timeout_ms: sessionTimeoutMs,
         $window_id: windowId,
         ...event.data,
-        /**set person properties in 1 call, this is most frequent event */
-        ...(init.data.customer &&
-          anonymous == false && {
-            $set: init.data.customer,
-          }),
-          ...resolveEventEcommerceSpecBody(event)
+        ...resolveEventEcommerceSpecBody(event)
       }, {
         timestamp: new Date(event.timestamp),
         ...(uuid ? { uuid: uuid } : {}),
@@ -543,7 +585,7 @@ register(async (extensionApi) => {
       const eventName = resolveEventEcommerceName(event.name)
       posthog.captureStatelessPublic(distinctId, eventName,{
         ...featureFlags,
-        ...initProperties,
+        ...eventProperties(event, anonymous),
         ...(anonymous == true && {
           customer: undefined,
           purchasingCompany: undefined,
@@ -571,7 +613,7 @@ register(async (extensionApi) => {
       const eventName = resolveEventEcommerceName(event.name)
       posthog.captureStatelessPublic(distinctId, eventName, {
         ...featureFlags,
-        ...initProperties,
+        ...eventProperties(event, anonymous),
         ...(anonymous == true && {
           customer: undefined,
           purchasingCompany: undefined,
@@ -601,7 +643,7 @@ register(async (extensionApi) => {
       posthog.captureStatelessPublic(distinctId, eventName, {
         ...featureFlags,
         ...{
-          ...initProperties,
+          ...eventProperties(event, anonymous),
           ...(anonymous == true && {
             customer: undefined,
             purchasingCompany: undefined,
@@ -632,7 +674,7 @@ register(async (extensionApi) => {
       const eventName = resolveEventEcommerceName(event.name);
       posthog.captureStatelessPublic(distinctId, eventName,{
         ...featureFlags,
-          ...initProperties,
+          ...eventProperties(event, anonymous),
           ...(anonymous == true && {
             customer: undefined,
             purchasingCompany: undefined,
@@ -676,23 +718,27 @@ register(async (extensionApi) => {
           })
           .filter((el): el is [string, string] => !!el)
       );
+      const baseProperties = eventProperties(event, anonymous);
+      // guests only: a logged-in customer keeps their account identity and email (see shouldIdentifyTypedEmail)
+      const identifyByEmail = !!email && shouldIdentifyTypedEmail({ anonymous, typedEmail: email, customerEmail: init.data.customer?.email, currentDistinctId: distinctId });
       await posthog.captureStatelessPublic(distinctId, eventName, {
         ...featureFlags,
         $session_id : sessionId,
         $configured_session_timeout_ms: sessionTimeoutMs,
         $window_id: windowId,
-        ...initProperties,
+        ...baseProperties,
         ...(anonymous == true && {
           customer: null,
           purchasingCompany: null,
         }),
         client_id: event.clientId,
-        form: event.data.element.elements as any,
-        form_body: formBody as any,
+        // field values are user input (PII): kept only for identified visitors, names/types/ids always
+        form: event.data.element.elements.map((el) => redactElementValue(el, anonymous)) as any,
+        ...(anonymous == false && { form_body: formBody as any }),
         action: event.data.element.action as any,
-        ...(email &&
-          anonymous == false && {
+        ...(identifyByEmail && {
             $set: {
+              ...(baseProperties.$set as Record<string, unknown> | undefined),
               email: email,
             },
           }),
@@ -701,7 +747,7 @@ register(async (extensionApi) => {
         timestamp: new Date(event.timestamp),
         ...(uuid ? { uuid: uuid } : {}), 
       });
-      if (email && anonymous == false && distinctId != email) {
+      if (identifyByEmail) {
         await setDistinctId(email)
         await posthog.identify(email)
       }

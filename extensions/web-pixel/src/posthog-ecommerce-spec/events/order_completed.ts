@@ -156,6 +156,14 @@ interface OrderCompletedEvent {
    * Whether any line item is purchased via a selling plan (subscription)
    */
   has_subscription: boolean;
+
+  /**
+   * Whether this is the customer's first order, as reported by Shopify
+   * (`checkout.order.customer.isFirstOrder`; requires Checkout Extensibility).
+   * Top-level so it is filterable in PostHog insights, cohorts and experiment metrics.
+   * `null` when Shopify does not provide it.
+   */
+  is_first_order: boolean | null;
 }
 export function orderCompletedSpec(
   shop: Shop,
@@ -199,5 +207,6 @@ export function orderCompletedSpec(
       }
     }),
     has_subscription: checkout.lineItems.some((li) => li.sellingPlanAllocation != null),
+    is_first_order: checkout.order?.customer?.isFirstOrder ?? null,
   };
 }
