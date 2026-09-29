@@ -11,7 +11,8 @@ Attribution fix. `$lib_version` is `1.1.0` on every event sent by this build.
 - **Consent is evaluated per event**, not once at boot: withdrawing consent mid-page (`visitorConsentCollected`) now anonymises every subsequent event and triggers the identity reset, instead of only taking effect on the next page load.
 - **`$set` is limited to customer fields**, with nulls stripped (an absent `phone` / `lastName` no longer clobbers an existing person property). Browser / URL / UTM person properties are lifted by PostHog ingestion from event properties on every event, which is fresher than the previous boot-time snapshot.
 - The pixel now merges into the shared posthog-js localStorage blob when writing `distinct_id` instead of replacing it (kept: `$sesid`, `$initial_person_info`, …). The full wipe on consent withdrawal (`resetPosthog`) is unchanged and intentional.
-- Tooling: vitest test harness (`pnpm test`), 21 unit tests on `campaign-params.ts` / `event-properties.ts`.
+- **New `is_first_order` property on `Order Completed`** (both sources). Pixel: Shopify's `checkout.order.customer.isFirstOrder` surfaced top-level (it was only reachable nested under `order.customer`, invisible to PostHog filters/cohorts/experiment metrics). Server: `false` for subscription renewals (`subscription_contract_checkout_one`), `null` otherwise — Shopify no longer sends `customer.orders_count` in order webhooks.
+- Tooling: vitest test harness (`pnpm test`), 26 unit tests on `campaign-params.ts` / `event-properties.ts` / ecommerce-spec and server `Order Completed` mappers.
 
 ---
 

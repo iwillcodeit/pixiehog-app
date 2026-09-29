@@ -90,6 +90,13 @@ export function mapOrderCompleted(order: ShopifyOrderPayload, shopDomain: string
   }));
   const hasSubscription = lineItems.some((item) => item.selling_plan_allocation != null);
 
+  // Shopify no longer sends customer.orders_count in order webhooks, so first-order status can't be
+  // derived here. Subscription renewals (`subscription_contract_checkout_one`) are never a first order —
+  // the initial subscription order goes through web checkout and is captured by the pixel with Shopify's
+  // `isFirstOrder` flag. Everything else server-side (POS, draft, API) is unknown → null.
+  const isFirstOrder: boolean | null =
+    order.source_name === "subscription_contract_checkout_one" ? false : null;
+
   return {
     checkout_id: order.checkout_token || null,
     order_id: String(order.id),
@@ -120,6 +127,8 @@ export function mapOrderCompleted(order: ShopifyOrderPayload, shopDomain: string
     presentment_currency: order.presentment_currency || null,
     event_source: "server",
     has_subscription: hasSubscription,
+    // Same key as the web pixel's Order Completed (`checkout.order.customer.isFirstOrder`)
+    is_first_order: isFirstOrder,
     products,
   };
 }
