@@ -7,7 +7,7 @@ import { isNumber } from './type-utils';
 import type { WebPixelEventsSettings } from '../../../common/dto/web-pixel-events-settings.dto';
 import { calculateCampaignParams } from './campaign-params';
 import { buildEventProperties, redactElementValue } from './event-properties';
-import { decideAnonymousTransition, type AnonymousMarker } from './consent-state';
+import { decideAnonymousTransition, shouldIdentifyCustomer, type AnonymousMarker } from './consent-state';
 import { UAParser } from 'ua-parser-js';
 import { getSearchEngine } from './utils';
 import { PixieHogPostHog } from './pixiehog-posthog';
@@ -268,10 +268,12 @@ register(async (extensionApi) => {
    * Identify the logged-in customer by email whenever events may carry their identity. Runs at boot and
    * before every event: consent can be granted mid-page (`visitorConsentCollected`), and without this the
    * now non-anonymous events would attach customer fields to the anonymous UUID instead of the customer.
+   * Before events it only promotes an anonymous id (see `shouldIdentifyCustomer`).
    */
-  async function identifyCustomer(anonymous: boolean) {
+  async function identifyCustomer(anonymous: boolean, fromAnonymousOnly: boolean) {
     const email = init.data.customer?.email
-    if (!email || anonymous || (await resolveDistinctId()) == email) {
+    const currentDistinctId = await resolveDistinctId()
+    if (!email || !shouldIdentifyCustomer({ anonymous, email, currentDistinctId, fromAnonymousOnly })) {
       return
     }
     await mergePostHogLocalStorage({ distinct_id: email })
@@ -288,7 +290,7 @@ register(async (extensionApi) => {
       const uuid: string | undefined = event.id;
       const validateEventUUID: string | undefined = extractEventUUID(uuid);
       const anonymous = await syncAnonymousState();
-      await identifyCustomer(anonymous);
+      await identifyCustomer(anonymous, true);
 
       fn(event, validateEventUUID, anonymous);
     };
@@ -381,7 +383,7 @@ register(async (extensionApi) => {
 
   const setDistinctId = (str: string) => mergePostHogLocalStorage({ distinct_id: str });
 
-  await identifyCustomer(anonymous)
+  await identifyCustomer(anonymous, false)
 
   const resolveEventEcommerceName = (name: string) => {
     if (!posthogEcommerceSpecEnabled) {

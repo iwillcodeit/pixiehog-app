@@ -28,6 +28,28 @@ export function isIdentifiedDistinctId(distinctId: unknown): boolean {
   return typeof distinctId === 'string' && distinctId !== '' && !UUID_REGEX.test(distinctId);
 }
 
+export type IdentifyCustomerInput = {
+  anonymous: boolean;
+  /** Logged-in customer's email, if any. */
+  email: string | null | undefined;
+  /** `distinct_id` currently held in the shared posthog-js persistence blob. */
+  currentDistinctId: unknown;
+  /**
+   * `true` before each event: only promote an anonymous (UUID) id, never replace an identity already
+   * set mid-page (e.g. a different email submitted at checkout, which the handler identified). `false`
+   * at boot, where the logged-in account wins (shared device: previous customer's id is replaced).
+   */
+  fromAnonymousOnly: boolean;
+};
+
+/** Whether the logged-in customer must be identified (by email) before the next event is sent. */
+export function shouldIdentifyCustomer(input: IdentifyCustomerInput): boolean {
+  if (!input.email || input.anonymous || input.currentDistinctId === input.email) {
+    return false;
+  }
+  return !(input.fromAnonymousOnly && isIdentifiedDistinctId(input.currentDistinctId));
+}
+
 /**
  * Decide what to do with persisted identity when an event is about to be sent.
  *
