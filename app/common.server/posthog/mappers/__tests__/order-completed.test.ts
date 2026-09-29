@@ -24,6 +24,34 @@ describe("mapOrderCompleted — is_first_order", () => {
 
   it("keeps the existing shape", () => {
     const props = mapOrderCompleted({ ...baseOrder, source_name: "subscription_contract_checkout_one" }, "shop.myshopify.com");
-    expect(props).toMatchObject({ order_id: "123", total: 120, subtotal: 100, currency: "EUR", event_source: "server" });
+    expect(props).toEqual({
+      checkout_id: null,
+      order_id: "123",
+      order_number: 1001,
+      order_name: null,
+      affiliation: "shop.myshopify.com",
+      subtotal: 100,
+      total: 120,
+      revenue: 100,
+      shipping: null,
+      tax: null,
+      discount: null,
+      coupon: null,
+      currency: "EUR",
+      source_name: "subscription_contract_checkout_one",
+      financial_status: null,
+      fulfillment_status: null,
+      payment_gateway_names: null,
+      tags: null,
+      referring_site: null,
+      landing_site: null,
+      customer_orders_count: null,
+      ordersCount: null,
+      presentment_currency: null,
+      event_source: "server",
+      has_subscription: false,
+      is_first_order: false,
+      products: [],
+    });
   });
 });
