@@ -230,7 +230,7 @@ register(async (extensionApi) => {
     return anonymous;
   }
 
-  /** Boot-time consent state — used only for the boot-time identify below. */
+  /** Boot-time consent state — used only for the boot-time identify. */
   const anonymous: boolean = await syncAnonymousState()
   const globalDistinctId = await resolveDistinctId()
   const posthog = new PixieHogPostHog(posthog_api_key, {
@@ -264,6 +264,20 @@ register(async (extensionApi) => {
   }
   const featureFlags = await calculateFeatureFlags();
 
+  /**
+   * Identify the logged-in customer by email whenever events may carry their identity. Runs at boot and
+   * before every event: consent can be granted mid-page (`visitorConsentCollected`), and without this the
+   * now non-anonymous events would attach customer fields to the anonymous UUID instead of the customer.
+   */
+  async function identifyCustomer(anonymous: boolean) {
+    const email = init.data.customer?.email
+    if (!email || anonymous || (await resolveDistinctId()) == email) {
+      return
+    }
+    await mergePostHogLocalStorage({ distinct_id: email })
+    await posthog.identify(email)
+  }
+
   type ValueOf<T> = T[keyof T];
   function preprocessEvent<T extends ValueOf<StandardEvents>>(fn: (t: T, u: string | undefined, p: boolean) => void) {
     return async (event: T) => {
@@ -274,6 +288,7 @@ register(async (extensionApi) => {
       const uuid: string | undefined = event.id;
       const validateEventUUID: string | undefined = extractEventUUID(uuid);
       const anonymous = await syncAnonymousState();
+      await identifyCustomer(anonymous);
 
       fn(event, validateEventUUID, anonymous);
     };
@@ -366,10 +381,7 @@ register(async (extensionApi) => {
 
   const setDistinctId = (str: string) => mergePostHogLocalStorage({ distinct_id: str });
 
-  if (init.data.customer?.email && anonymous == false && globalDistinctId != init.data.customer.email) {
-    await setDistinctId(init.data.customer?.email)
-    await posthog.identify(init.data.customer?.email)
-  }
+  await identifyCustomer(anonymous)
 
   const resolveEventEcommerceName = (name: string) => {
     if (!posthogEcommerceSpecEnabled) {
