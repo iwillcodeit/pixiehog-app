@@ -1,6 +1,6 @@
 # nuances-posthog (PixieHog fork)
 
-## web-pixel 1.1.0 — 2026-08-31
+## web-pixel 1.1.0 — 2026-09-29
 
 Attribution fix. `$lib_version` is `1.1.0` on every event sent by this build.
 
@@ -11,8 +11,16 @@ Attribution fix. `$lib_version` is `1.1.0` on every event sent by this build.
 - **Consent is evaluated per event**, not once at boot: withdrawing consent mid-page (`visitorConsentCollected`) now anonymises every subsequent event and triggers the identity reset, instead of only taking effect on the next page load.
 - **`$set` is limited to customer fields**, with nulls stripped (an absent `phone` / `lastName` no longer clobbers an existing person property). Browser / URL / UTM person properties are lifted by PostHog ingestion from event properties on every event, which is fresher than the previous boot-time snapshot.
 - The pixel now merges into the shared posthog-js localStorage blob when writing `distinct_id` instead of replacing it (kept: `$sesid`, `$initial_person_info`, …). The full wipe on consent withdrawal (`resetPosthog`) is unchanged and intentional.
-- **New `is_first_order` property on `Order Completed`** (both sources). Pixel: Shopify's `checkout.order.customer.isFirstOrder` surfaced top-level (it was only reachable nested under `order.customer`, invisible to PostHog filters/cohorts/experiment metrics). Server: `false` for subscription renewals (`subscription_contract_checkout_one`), `null` otherwise — Shopify no longer sends `customer.orders_count` in order webhooks.
-- Tooling: vitest test harness (`pnpm test`), 26 unit tests on `campaign-params.ts` / `event-properties.ts` / ecommerce-spec and server `Order Completed` mappers.
+- **Identity reset no longer depends on the consent marker alone.** Before sending anything — at boot (before the distinct_id is resolved and feature flags are preloaded) and before every event — an anonymous visitor whose shared posthog-js blob still holds an identified `distinct_id` (email set by the pixel, customer id set by the theme's `posthog.identify`) gets the full reset. Previously it only fired on the `'false' → 'true'` marker flip, so a fresh sandbox (marker absent) or a marker already at `'true'` sent anonymous events under the persisted identity. UUID ids are the normal anonymous state and never trigger a reset (that would drop the theme's `$sesid` / `$device_id` on every event).
+- **`$process_person_profile: false` on every anonymous event**, not only `page_viewed`. PostHog ingestion lifts plain event properties (`utm_*`, `gclid`, `$browser`, …) into a person profile even without `$set`; anonymous events now create no person at all.
+- **No typed values in DOM events when anonymous**: `input_*` / `clicked` drop `element.value`, `form_submitted` drops `form_body` and every field's `value`. Field names, types and ids are kept.
+- **`$current_url` / `$pathname` / `$host` follow the event URL**, like campaign params already did; they were pinned to the boot URL across checkout SPA navigation. DOM events keep the boot values.
+- **New `is_first_order` property on `Order Completed`** (web pixel): Shopify's `checkout.order.customer.isFirstOrder` surfaced top-level (it was only reachable nested under `order.customer`, invisible to PostHog filters/cohorts/experiment metrics), `null` when Shopify does not provide it.
+- Tooling: vitest test harness (`pnpm test`), 40 unit tests on `campaign-params.ts` / `event-properties.ts` / `consent-state.ts` / ecommerce-spec and server `Order Completed` mappers.
+
+## server app — 2026-09-29
+
+- **`is_first_order` on the webhook-driven `Order Completed`** (`app/common.server/posthog/mappers/order-completed.ts`), same key as the web pixel: `false` for subscription renewals (`subscription_contract_checkout_one`, never a first order), `null` (unknown) for every other server-side channel — Shopify no longer sends `customer.orders_count` in order webhooks.
 
 ---
 
