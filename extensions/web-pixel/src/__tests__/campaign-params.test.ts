@@ -73,6 +73,11 @@ describe('calculateCampaignParams', () => {
     });
   });
 
+  it('keeps the first value of a repeated param', () => {
+    const { lastTouchCampaignParams } = calculateCampaignParams(`${BASE}?utm_source=Klaviyo&utm_source=instagram`);
+    expect(lastTouchCampaignParams).toEqual({ utm_source: 'Klaviyo' });
+  });
+
   it('covers the five utm_* params', () => {
     for (const p of ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term']) {
       expect(CAMPAIGN_PARAMS).toContain(p);

@@ -6,7 +6,8 @@ import { extractEventUUID } from './validate-uuid';
 import { isNumber } from './type-utils';
 import type { WebPixelEventsSettings } from '../../../common/dto/web-pixel-events-settings.dto';
 import { calculateCampaignParams } from './campaign-params';
-import { buildEventProperties } from './event-properties';
+import { buildEventProperties, redactElementValue } from './event-properties';
+import { decideAnonymousTransition, type AnonymousMarker } from './consent-state';
 import { UAParser } from 'ua-parser-js';
 import { getSearchEngine } from './utils';
 import { PixieHogPostHog } from './pixiehog-posthog';
@@ -190,6 +191,47 @@ register(async (extensionApi) => {
     await localStorage.setItem(POSTHOG_KEY, JSON.stringify({ distinct_id }));
   }
 
+  /**
+   * Whether events must be anonymised. Evaluated per event, not once at boot: under
+   * `non-anonymized-by-consent` the visitor can withdraw consent mid-page (`visitorConsentCollected`
+   * updates `customerPrivacyStatus`) and every later event must honour the new state.
+   */
+  const isAnonymous = (): boolean => {
+    if(settings.data_collection_strategy == 'anonymized') {
+      return true
+    }
+    if(settings.data_collection_strategy == 'non-anonymized') {
+      return false
+    }
+    if(settings.data_collection_strategy == 'non-anonymized-by-consent') {
+      return  !customerPrivacyStatus.analyticsProcessingAllowed
+    }
+    return true
+  }
+
+  const PXHOG_ANONYMOUS_KEY = 'pxhog_anonymous_key';
+  /**
+   * Reconcile persisted identity with the current consent state and return `anonymous`. Runs at boot
+   * (before the distinct_id is resolved and feature flags are preloaded) and before every event, so an
+   * identified distinct_id left in the shared blob — by the pixel or by the theme's posthog-js — is
+   * wiped before anything is sent for an anonymous visitor. Decision logic lives in `consent-state.ts`.
+   */
+  async function syncAnonymousState(): Promise<boolean> {
+    const anonymous = isAnonymous();
+    const marker = (await localStorage.getItem(PXHOG_ANONYMOUS_KEY)) as AnonymousMarker;
+    const { distinct_id } = await readPostHogLocalStorage();
+    const transition = decideAnonymousTransition({ anonymous, marker, storedDistinctId: distinct_id });
+    if (transition.reset) {
+      await resetPosthog();
+    }
+    if (transition.marker !== null) {
+      await localStorage.setItem(PXHOG_ANONYMOUS_KEY, transition.marker);
+    }
+    return anonymous;
+  }
+
+  /** Boot-time consent state — used only for the boot-time identify below. */
+  const anonymous: boolean = await syncAnonymousState()
   const globalDistinctId = await resolveDistinctId()
   const posthog = new PixieHogPostHog(posthog_api_key, {
     host: posthog_api_host,
@@ -222,26 +264,6 @@ register(async (extensionApi) => {
   }
   const featureFlags = await calculateFeatureFlags();
 
-  /**
-   * Whether events must be anonymised. Evaluated per event, not once at boot: under
-   * `non-anonymized-by-consent` the visitor can withdraw consent mid-page (`visitorConsentCollected`
-   * updates `customerPrivacyStatus`) and every later event must honour the new state.
-   */
-  const isAnonymous = (): boolean => {
-    if(settings.data_collection_strategy == 'anonymized') {
-      return true
-    }
-    if(settings.data_collection_strategy == 'non-anonymized') {
-      return false
-    }
-    if(settings.data_collection_strategy == 'non-anonymized-by-consent') {
-      return  !customerPrivacyStatus.analyticsProcessingAllowed
-    }
-    return true
-  }
-  /** Boot-time consent state — used only for the boot-time identify below. */
-  const anonymous: boolean = isAnonymous()
-
   type ValueOf<T> = T[keyof T];
   function preprocessEvent<T extends ValueOf<StandardEvents>>(fn: (t: T, u: string | undefined, p: boolean) => void) {
     return async (event: T) => {
@@ -251,25 +273,8 @@ register(async (extensionApi) => {
       }
       const uuid: string | undefined = event.id;
       const validateEventUUID: string | undefined = extractEventUUID(uuid);
-    
-      const PXHOG_ANONYMOUS_KEY = 'pxhog_anonymous_key';
-      const anonymous = isAnonymous();
+      const anonymous = await syncAnonymousState();
 
-      const localStorageAnonymous = await localStorage.getItem(PXHOG_ANONYMOUS_KEY) as 'true' | 'false' | null;
-      if (localStorageAnonymous === null) {
-        await localStorage.setItem(PXHOG_ANONYMOUS_KEY, anonymous);
-      }
-      if (
-        localStorageAnonymous !== null &&
-        localStorageAnonymous != String(anonymous) && anonymous == true) {
-        await resetPosthog();
-      }
-      if (
-        localStorageAnonymous !== null &&
-        localStorageAnonymous != String(anonymous)) {
-        await localStorage.setItem(PXHOG_ANONYMOUS_KEY, anonymous);
-      }
-      
       fn(event, validateEventUUID, anonymous);
     };
   }
@@ -519,7 +524,8 @@ register(async (extensionApi) => {
             }),
           },
           client_id: event.clientId,
-          ...event.data.element as any,
+          // `value` is user input (PII on form fields): dropped when anonymous
+          ...redactElementValue(event.data.element as any, anonymous),
           ...resolveEventEcommerceSpecBody(event)
         }, {
           ...(uuid ? { uuid: uuid } : {}),
@@ -541,7 +547,6 @@ register(async (extensionApi) => {
         ...(anonymous == true && {
           customer: null,
           purchasingCompany: null,
-          $process_person_profile: false,
         }),
         client_id: event.clientId,
         url: event.context.document.location.href,
@@ -711,8 +716,9 @@ register(async (extensionApi) => {
           purchasingCompany: null,
         }),
         client_id: event.clientId,
-        form: event.data.element.elements as any,
-        form_body: formBody as any,
+        // field values are user input (PII): kept only for identified visitors, names/types/ids always
+        form: event.data.element.elements.map((el) => redactElementValue(el, anonymous)) as any,
+        ...(anonymous == false && { form_body: formBody as any }),
         action: event.data.element.action as any,
         ...(email &&
           anonymous == false && {

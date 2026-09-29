@@ -41,17 +41,24 @@ export type BuildEventPropertiesArgs = {
  *   no longer clobbers an existing person property). Browser / URL / UTM person properties are lifted from event properties
  *   by PostHog ingestion on every event, so sending them explicitly is redundant and would pin stale
  *   boot-time values on the person.
+ * - **URL properties**: `$current_url` / `$pathname` / `$host` follow the event URL for the same reason as
+ *   campaign params (the base holds the boot URL). An unparsable URL leaves the base values untouched.
  * - **anonymous**: no customer fields, no `$set` / `$set_once` — consent refused means no PII on events and no
- *   person properties, on any event (previously only `page_viewed` was protected).
+ *   person properties, on any event (previously only `page_viewed` was protected). `$process_person_profile:
+ *   false` is set because PostHog ingestion otherwise lifts event properties (`utm_*`, `gclid`, `$browser`, …)
+ *   into a person profile even without an explicit `$set`.
  */
 export function buildEventProperties(args: BuildEventPropertiesArgs): Record<string, unknown> {
   const campaign = args.eventHref ? calculateCampaignParams(args.eventHref) : args.initCampaign;
   const properties: Record<string, unknown> = {
     ...args.base,
+    ...urlProperties(args.eventHref),
     ...(args.anonymous ? {} : args.customer ?? {}),
     ...campaign.lastTouchCampaignParams,
   };
-  if (!args.anonymous) {
+  if (args.anonymous) {
+    properties.$process_person_profile = false;
+  } else {
     const set = stripNulls({ ...(args.customer ?? {}) });
     if (Object.keys(set).length > 0) properties.$set = set;
     properties.$set_once = stripNulls({
@@ -60,4 +67,35 @@ export function buildEventProperties(args: BuildEventPropertiesArgs): Record<str
     });
   }
   return properties;
+}
+
+/**
+ * `$current_url` / `$pathname` / `$host` derived from the event's own URL. Empty (base values win) for DOM
+ * events and unparsable URLs — never throws, this runs inside `register()`.
+ */
+function urlProperties(eventHref: string | undefined): Record<string, string> {
+  if (!eventHref) return {};
+  try {
+    const url = new URL(eventHref);
+    return { $current_url: eventHref, $pathname: url.pathname, $host: url.host };
+  } catch {
+    return {};
+  }
+}
+
+/** Shape of `event.data.element` for `input_*` / `clicked` and of `form_submitted`'s `elements[]`. */
+type ElementLike = { value?: string | null };
+
+/**
+ * Strip user-typed input from DOM element payloads when anonymous.
+ *
+ * `input_*` and `form_submitted` events carry `element.value` (and every field's value for forms) — PII
+ * (email, phone, address) whenever the element is a form field. Field names, types and ids are kept so
+ * the events remain usable for funnel analysis; identified visitors are returned as-is.
+ */
+export function redactElementValue<T extends ElementLike>(element: T, anonymous: boolean): T | Omit<T, 'value'> {
+  if (!anonymous) return element;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { value, ...rest } = element;
+  return rest;
 }

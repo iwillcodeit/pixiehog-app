@@ -1,10 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { calculateCampaignParams } from '../campaign-params';
-import { buildEventProperties, stripNulls } from '../event-properties';
+import { buildEventProperties, redactElementValue, stripNulls } from '../event-properties';
 
 const BOOT_URL = 'https://lightinderm.com/pages/rentree-2026?utm_source=Klaviyo&utm_medium=campaign';
 
-const base = { $browser: 'Safari', $referrer: '$direct', shop: { name: 'Lightinderm' } };
+const base = {
+  $browser: 'Safari',
+  $referrer: '$direct',
+  $current_url: BOOT_URL,
+  $pathname: '/pages/rentree-2026',
+  $host: 'lightinderm.com',
+  shop: { name: 'Lightinderm' },
+};
 const customer = { email: 'jane@example.com', firstName: 'Jane' };
 const setOnceBase = {
   $initial_browser: 'Safari',
@@ -105,5 +112,41 @@ describe('buildEventProperties', () => {
   it('preserves base properties', () => {
     const props = build();
     expect(props).toMatchObject(base);
+  });
+
+  it('disables person profile processing when anonymous, not when identified', () => {
+    expect(build({ anonymous: true }).$process_person_profile).toBe(false);
+    expect(build()).not.toHaveProperty('$process_person_profile');
+  });
+
+  it('derives $current_url / $pathname / $host from the event URL (checkout SPA navigation)', () => {
+    const eventHref = 'https://checkout.lightinderm.com/checkouts/cn/abc/information?utm_source=x';
+    expect(build({ eventHref })).toMatchObject({
+      $current_url: eventHref,
+      $pathname: '/checkouts/cn/abc/information',
+      $host: 'checkout.lightinderm.com',
+    });
+  });
+
+  it('keeps the boot URL properties for DOM events and unparsable event URLs', () => {
+    for (const eventHref of [undefined, 'not a url']) {
+      expect(build({ eventHref })).toMatchObject({
+        $current_url: BOOT_URL,
+        $pathname: '/pages/rentree-2026',
+        $host: 'lightinderm.com',
+      });
+    }
+  });
+});
+
+describe('redactElementValue', () => {
+  const element = { id: 'email', name: 'contact[email]', type: 'email', tagName: 'INPUT', value: 'jane@example.com' };
+
+  it('drops the typed value when anonymous, keeps name/type/id', () => {
+    expect(redactElementValue(element, true)).toEqual({ id: 'email', name: 'contact[email]', type: 'email', tagName: 'INPUT' });
+  });
+
+  it('returns the element untouched for identified visitors', () => {
+    expect(redactElementValue(element, false)).toBe(element);
   });
 });
